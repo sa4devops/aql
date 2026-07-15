@@ -223,6 +223,19 @@ const NodeInspector = ({
           <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
             {t('نوع السجل المرتبط', 'Linked Record Type')}
           </label>
+          {/*
+           * AGENT NOTE (2026-07-15):
+           * السجل المرتبط يُعرَّف بالرقم المرجعي (rt.id) وليس بالاسم فقط.
+           * القيمة المحفوظة في node.linkedRecordType هي rt.id (الرقم المرجعي).
+           * يجب دائماً عرض الرقم المرجعي بجانب الاسم في واجهة الاختيار
+           * حتى يتمكن المستخدم من التعرف على السجل بدقة.
+           *
+           * AGENT NOTE (EN):
+           * The linked record is identified by its reference number (rt.id), not just its name.
+           * The value stored in node.linkedRecordType is rt.id (the reference number).
+           * Always display the reference ID alongside the name in the select UI
+           * so the user can accurately identify the record type.
+           */}
           <select
             className="input-base"
             value={node.linkedRecordType || ''}
@@ -231,7 +244,7 @@ const NodeInspector = ({
             <option value="">{t('— غير مرتبط —', '— Not linked —')}</option>
             {RECORD_TYPES.map(rt => (
               <option key={`rt-opt-${rt.id}`} value={rt.id}>
-                {lang === 'ar' ? rt.name.ar : rt.name.en}
+                {rt.id} — {lang === 'ar' ? rt.name.ar : rt.name.en}
               </option>
             ))}
           </select>
