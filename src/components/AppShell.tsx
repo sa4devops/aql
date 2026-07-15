@@ -53,7 +53,7 @@ const ACCENT_TOKENS = {
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
-const getNavItems = (t: (ar: string, en: string) => string) => [
+const getNavItems = (t: (ar: string, en: string) => string): { group: string; items: { label: string; icon: string; href: string; exact?: boolean }[] }[] => [
   {
     group: t('الرئيسية', 'Main'),
     items: [
@@ -199,7 +199,7 @@ const Sidebar = ({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         />
         {!collapsed && (
           <div>
-            <div className="text-sm font-bold" style={{ color: 'var(--accent)', lineHeight: 1.2 }}>عقل</div>
+            <div className="text-sm font-bold" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>عقل</div>
             <div className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-latin)', lineHeight: 1.2 }}>AQL Platform</div>
           </div>
         )}

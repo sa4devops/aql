@@ -1,55 +1,61 @@
 'use client';
 
 import React from 'react';
-import * as HeroIcons from '@heroicons/react/24/outline';
-import * as HeroIconsSolid from '@heroicons/react/24/solid';
-import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
-
-type IconVariant = 'outline' | 'solid';
+import { HelpCircle } from 'lucide-react';
 
 interface IconProps {
-    name: string; // Changed to string to accept dynamic values
-    variant?: IconVariant;
-    size?: number;
-    className?: string;
-    onClick?: () => void;
-    disabled?: boolean;
-    [key: string]: any;
+  name: string;
+  variant?: 'outline' | 'solid';
+  size?: number;
+  className?: string;
+  onClick?: () => void;
+  disabled?: boolean;
 }
 
-function Icon({
-    name,
-    variant = 'outline',
-    size = 24,
-    className = '',
-    onClick,
-    disabled = false,
-    ...props
-}: IconProps) {
-    const iconSet = variant === 'solid' ? HeroIconsSolid : HeroIcons;
-    const IconComponent = iconSet[name as keyof typeof iconSet] as React.ComponentType<any>;
+// Map common heroicon names to Lucide icon names
+const NAME_MAP: Record<string, string> = {
+  ArrowLeftIcon: 'ArrowLeft',
+  ArrowRightIcon: 'ArrowRight',
+  HomeIcon: 'Home',
+  QuestionMarkCircleIcon: 'HelpCircle',
+  XMarkIcon: 'X',
+  CheckIcon: 'Check',
+  PlusIcon: 'Plus',
+  MinusIcon: 'Minus',
+  MagnifyingGlassIcon: 'Search',
+  BellIcon: 'Bell',
+  UserIcon: 'User',
+  Cog6ToothIcon: 'Settings',
+  TrashIcon: 'Trash2',
+  PencilIcon: 'Pencil',
+  EyeIcon: 'Eye',
+  EyeSlashIcon: 'EyeOff',
+  ChevronDownIcon: 'ChevronDown',
+  ChevronUpIcon: 'ChevronUp',
+  ChevronLeftIcon: 'ChevronLeft',
+  ChevronRightIcon: 'ChevronRight',
+  DocumentIcon: 'FileText',
+  FolderIcon: 'Folder',
+  ShieldCheckIcon: 'ShieldCheck',
+  ExclamationTriangleIcon: 'AlertTriangle',
+  InformationCircleIcon: 'Info',
+};
 
-    if (!IconComponent) {
-        return (
-            <QuestionMarkCircleIcon
-                width={size}
-                height={size}
-                className={`text-gray-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
-                onClick={disabled ? undefined : onClick}
-                {...props}
-            />
-        );
-    }
+function Icon({ name, size = 24, className = '', onClick, disabled = false }: IconProps) {
+  const lucideName = NAME_MAP[name] || name.replace(/Icon$/, '');
 
-    return (
-        <IconComponent
-            width={size}
-            height={size}
-            className={`${disabled ? 'opacity-50 cursor-not-allowed' : onClick ? 'cursor-pointer hover:opacity-80' : ''} ${className}`}
-            onClick={disabled ? undefined : onClick}
-            {...props}
-        />
-    );
+  // Dynamically require the icon from lucide-react
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const lucide = require('lucide-react') as Record<string, React.ComponentType<{ size?: number; className?: string; onClick?: () => void }>>;
+  const IconComponent = lucide[lucideName] || HelpCircle;
+
+  return (
+    <IconComponent
+      size={size}
+      className={`${disabled ? 'opacity-50 cursor-not-allowed' : onClick ? 'cursor-pointer hover:opacity-80' : ''} ${className}`}
+      onClick={disabled ? undefined : onClick}
+    />
+  );
 }
 
-export default Icon; 
+export default Icon;

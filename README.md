@@ -1,91 +1,60 @@
-# Next.js
+# عقل / AQL — Trial UI
 
-A modern Next.js 15 application built with TypeScript and Tailwind CSS.
+> **Status**: Frontend Trial — Mock Data Only — No Production Backend
 
-## 🚀 Features
+This is a frontend-only trial UI for the **عقل (AQL)** enterprise knowledge management platform. It is built with Next.js 15, TypeScript, and Tailwind CSS. All data is local Mock Data. There is no backend, no database, and no external SaaS services.
 
-- **Next.js 15** - Latest version with improved performance and features
-- **React 19** - Latest React version with enhanced capabilities
-- **Tailwind CSS** - Utility-first CSS framework for rapid UI development
+## Purpose
 
-## 🛠️ Installation
+This repository contains the trial UI for stakeholder review and UX validation. It is **not** a production deployment.
 
-1. Install dependencies:
-  ```bash
-  npm install
-  # or
-  yarn install
-  ```
+## Tech Stack
 
-2. Start the development server:
-  ```bash
-  npm run dev
-  # or
-  yarn dev
-  ```
-3. Open [http://localhost:4028](http://localhost:4028) with your browser to see the result.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript 5 |
+| Styling | Tailwind CSS 3.x |
+| Icons | Lucide React |
+| Canvas | React Flow (reactflow) |
+| Tables | TanStack Table + Virtual |
+| State | Zustand |
+| Validation | Zod |
+| Charts | Recharts |
+| Data | Local Mock Data only |
 
-## 📁 Project Structure
+## Screens
 
+| Route | Screen |
+|-------|--------|
+| `/` | Dashboard / Home |
+| `/enterprise-data-table-record-list` | Record List |
+| `/record-type-builder` | Record Type Builder |
+| `/workflow-canvas-builder` | Workflow Builder |
+| `/action-registry` | Action Registry |
+| `/action-registry/[id]` | Action Detail |
+| `/ui-showcase-design-playground` | UI Showcase |
+
+## Running Locally
+
+```bash
+npm install
+npm run dev
 ```
-nextjs/
-├── public/             # Static assets
-├── src/
-│   ├── app/            # App router components
-│   │   ├── layout.tsx  # Root layout component
-│   │   └── page.tsx    # Main page component
-│   ├── components/     # Reusable UI components
-│   ├── styles/         # Global styles and Tailwind configuration
-├── next.config.mjs     # Next.js configuration
-├── package.json        # Project dependencies and scripts
-├── postcss.config.js   # PostCSS configuration
-└── tailwind.config.js  # Tailwind CSS configuration
 
-```
+Open [http://localhost:4028](http://localhost:4028)
 
-## 🧩 Page Editing
+## Environment
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env` and set `NEXT_PUBLIC_SITE_URL` if needed. No other variables are required.
 
-## 🎨 Styling
+## Constraints
 
-This project uses Tailwind CSS for styling with the following features:
-- Utility-first approach for rapid development
-- Custom theme configuration
-- Responsive design utilities
-- PostCSS and Autoprefixer integration
+- **No backend**: All data is Mock Data in `src/mocks/`
+- **No external runtime requests**: All fonts, icons, and assets are local
+- **No Supabase / OpenAI / Stripe / Analytics**: These are not used
+- **Trial only**: Do not merge to main without Product Owner sign-off
 
-## 📦 Available Scripts
+## Branch Policy
 
-- `npm run dev` - Start development server on port 4028
-- `npm run build` - Build the application for production
-- `npm run start` - Start the development server
-- `npm run serve` - Start the production server
-- `npm run lint` - Run ESLint to check code quality
-- `npm run lint:fix` - Fix ESLint issues automatically
-- `npm run format` - Format code with Prettier
-
-## 📱 Deployment
-
-Build the application for production:
-
-  ```bash
-  npm run build
-  ```
-
-## 📚 Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial
-
-You can check out the [Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## 🙏 Acknowledgments
-
-- Built with [Rocket.new](https://rocket.new)
-- Powered by Next.js and React
-- Styled with Tailwind CSS
-
-Built with ❤️ on Rocket.new
+All changes go to `rocket-update` branch only. Do not push to `main`, do not create Releases or Tags without explicit approval.

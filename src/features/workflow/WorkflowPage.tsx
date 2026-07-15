@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import AppShell, { useApp } from '@/components/AppShell';
 import { WORKFLOWS } from '@/mocks/data';
-import type { Workflow, WorkflowNodeType } from '@/mocks/types';
+import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/mocks/types';
 import { ROUTES } from '@/app-routes/routes';
 import { useRouter } from 'next/navigation';
 
@@ -19,6 +19,313 @@ export const NODE_TYPE_CONFIG: Record<WorkflowNodeType, { ar: string; en: string
   notification: { ar: 'إشعار', en: 'Notification', color: 'var(--gray-500)', icon: '🔔' },
   end: { ar: 'انتهاء', en: 'End', color: 'var(--error)', icon: '■' },
 };
+
+// ─── Workflow Node Inspector ──────────────────────────────────────────────────
+const NodeInspector = ({
+  node,
+  onUpdate,
+  onClose,
+  t,
+  lang,
+}: {
+  node: WorkflowNode;
+  onUpdate: (n: WorkflowNode) => void;
+  onClose: () => void;
+  t: (ar: string, en: string) => string;
+  lang: 'ar' | 'en';
+}) => {
+  const cfg = NODE_TYPE_CONFIG[node.type];
+  const roleLabels: Record<string, { ar: string; en: string }> = {
+    employee: { ar: 'موظف', en: 'Employee' },
+    supervisor: { ar: 'مشرف', en: 'Supervisor' },
+    manager: { ar: 'مدير', en: 'Manager' },
+    system_admin: { ar: 'مسؤول نظام', en: 'System Admin' },
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: '1px solid var(--border)', flexShrink: 0 }}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className="flex items-center justify-center text-xs font-bold rounded"
+            style={{ width: 24, height: 24, background: `color-mix(in srgb, ${cfg.color} 15%, transparent)`, color: cfg.color }}
+          >
+            {cfg.icon}
+          </span>
+          <div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {t('خصائص العنصر', 'Element Properties')}
+            </div>
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ar' ? cfg.ar : cfg.en} · {node.id}
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} className="btn btn-ghost btn-sm" aria-label={t('إغلاق', 'Close')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+        {/* Name AR */}
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+            {t('الاسم (عربي)', 'Name (Arabic)')} <span style={{ color: 'var(--error)' }}>*</span>
+          </label>
+          <input
+            type="text"
+            className="input-base"
+            value={node.label.ar}
+            onChange={e => onUpdate({ ...node, label: { ...node.label, ar: e.target.value } })}
+          />
+        </div>
+
+        {/* Name EN */}
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+            {t('الاسم (إنجليزي)', 'Name (English)')}
+          </label>
+          <input
+            type="text"
+            className="input-base"
+            value={node.label.en}
+            onChange={e => onUpdate({ ...node, label: { ...node.label, en: e.target.value } })}
+            dir="ltr"
+          />
+        </div>
+
+        {/* Node Type (read-only display) */}
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+            {t('نوع العنصر', 'Element Type')}
+          </label>
+          <div
+            className="input-base flex items-center gap-2"
+            style={{ background: 'var(--background)', cursor: 'default' }}
+          >
+            <span style={{ color: cfg.color }}>{cfg.icon}</span>
+            <span>{lang === 'ar' ? cfg.ar : cfg.en}</span>
+          </div>
+        </div>
+
+        {/* Assigned Role (for task nodes) */}
+        {(node.type === 'task' || node.type === 'action') && (
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+              {t('الدور المسؤول', 'Responsible Role')}
+            </label>
+            <select
+              className="input-base"
+              value={node.assignedRole || ''}
+              onChange={e => onUpdate({ ...node, assignedRole: e.target.value as WorkflowNode['assignedRole'] })}
+            >
+              <option value="">{t('— اختر دوراً —', '— Select Role —')}</option>
+              {Object.entries(roleLabels).map(([role, labels]) => (
+                <option key={`role-opt-${role}`} value={role}>
+                  {labels[lang]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Deadline / SLA (for task nodes) */}
+        {node.type === 'task' && (
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+              {t('المهلة الزمنية (ساعات)', 'Deadline (hours)')}
+            </label>
+            <input
+              type="number"
+              className="input-base"
+              value={node.deadline || ''}
+              min={0}
+              onChange={e => onUpdate({ ...node, deadline: e.target.value ? Number(e.target.value) : undefined })}
+              placeholder={t('مثال: 48', 'e.g. 48')}
+            />
+          </div>
+        )}
+
+        {/* Conditions (for condition nodes) */}
+        {node.type === 'condition' && (
+          <div>
+            <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+              {t('شروط التفرع', 'Branch Conditions')}
+            </label>
+            <div className="space-y-1">
+              {(node.conditions || []).map((cond, ci) => (
+                <div key={`cond-${node.id}-${ci}`} className="flex gap-1">
+                  <input
+                    type="text"
+                    className="input-base flex-1"
+                    value={cond}
+                    onChange={e => {
+                      const conds = [...(node.conditions || [])];
+                      conds[ci] = e.target.value;
+                      onUpdate({ ...node, conditions: conds });
+                    }}
+                    placeholder={t('شرط...', 'Condition...')}
+                  />
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => onUpdate({ ...node, conditions: (node.conditions || []).filter((_, i) => i !== ci) })}
+                    aria-label={t('حذف الشرط', 'Remove Condition')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              ))}
+              <button
+                className="btn btn-ghost btn-sm text-xs w-full"
+                onClick={() => onUpdate({ ...node, conditions: [...(node.conditions || []), ''] })}
+              >
+                + {t('إضافة شرط', 'Add Condition')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Position info */}
+        <div
+          className="rounded-md p-3 text-xs"
+          style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
+        >
+          <div className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+            {t('الموضع على اللوحة', 'Canvas Position')}
+          </div>
+          <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            X: {Math.round(node.position.x)}, Y: {Math.round(node.position.y)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Edge Inspector ───────────────────────────────────────────────────────────
+const EdgeInspector = ({
+  edge,
+  onUpdate,
+  onClose,
+  t,
+  lang,
+}: {
+  edge: WorkflowEdge;
+  onUpdate: (e: WorkflowEdge) => void;
+  onClose: () => void;
+  t: (ar: string, en: string) => string;
+  lang: 'ar' | 'en';
+}) => (
+  <div className="flex flex-col h-full">
+    <div
+      className="flex items-center justify-between px-4 py-3"
+      style={{ borderBottom: '1px solid var(--border)', flexShrink: 0 }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="flex items-center justify-center text-xs font-bold rounded"
+          style={{ width: 24, height: 24, background: 'var(--info-bg)', color: 'var(--info)' }}
+        >
+          →
+        </span>
+        <div>
+          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {t('خصائص الرابط', 'Connection Properties')}
+          </div>
+          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {edge.source} → {edge.target}
+          </div>
+        </div>
+      </div>
+      <button onClick={onClose} className="btn btn-ghost btn-sm" aria-label={t('إغلاق', 'Close')}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+      {/* Label AR */}
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+          {t('اسم الانتقال (عربي)', 'Transition Name (Arabic)')}
+        </label>
+        <input
+          type="text"
+          className="input-base"
+          value={edge.label?.ar || ''}
+          onChange={e => onUpdate({ ...edge, label: { ar: e.target.value, en: edge.label?.en || '' } })}
+          placeholder={t('مثال: موافق', 'e.g. Approved')}
+        />
+      </div>
+
+      {/* Label EN */}
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+          {t('اسم الانتقال (إنجليزي)', 'Transition Name (English)')}
+        </label>
+        <input
+          type="text"
+          className="input-base"
+          value={edge.label?.en || ''}
+          onChange={e => onUpdate({ ...edge, label: { ar: edge.label?.ar || '', en: e.target.value } })}
+          dir="ltr"
+          placeholder="e.g. Approved"
+        />
+      </div>
+
+      {/* Condition */}
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+          {t('شرط الانتقال', 'Transition Condition')}
+        </label>
+        <input
+          type="text"
+          className="input-base"
+          value={edge.condition || ''}
+          onChange={e => onUpdate({ ...edge, condition: e.target.value })}
+          placeholder={t('مثال: status === "approved"', 'e.g. status === "approved"')}
+          dir="ltr"
+        />
+      </div>
+
+      {/* Connection info */}
+      <div
+        className="rounded-md p-3 text-xs"
+        style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
+      >
+        <div className="font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+          {t('معلومات الرابط', 'Connection Info')}
+        </div>
+        <div className="space-y-1" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+          <div>{t('من:', 'From:')} {edge.source}</div>
+          <div>{t('إلى:', 'To:')} {edge.target}</div>
+          <div>ID: {edge.id}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// ─── Empty Inspector ──────────────────────────────────────────────────────────
+const EmptyInspector = ({ t }: { t: (ar: string, en: string) => string }) => (
+  <div
+    className="flex flex-col items-center justify-center h-full text-center p-6"
+    style={{ color: 'var(--text-muted)' }}
+  >
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3">
+      <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+    </svg>
+    <div className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+      {t('لم يتم تحديد عنصر', 'No Element Selected')}
+    </div>
+    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+      {t('انقر على عقدة أو رابط لعرض خصائصه وتعديلها', 'Click a node or edge to view and edit its properties')}
+    </div>
+  </div>
+);
 
 // ─── Workflow Selector ────────────────────────────────────────────────────────
 const WorkflowSelector = ({
@@ -170,9 +477,27 @@ function WorkflowContent() {
   const [dragNodeType, setDragNodeType] = useState<WorkflowNodeType | null>(null);
   const [simulating, setSimulating] = useState(false);
   const [simStep, setSimStep] = useState(0);
+  const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<WorkflowEdge | null>(null);
   const isReadOnly = simRole === 'employee' || simRole === 'supervisor';
 
   const selectedWorkflow = workflows.find(w => w.id === selectedId) || workflows[0];
+
+  const updateNode = useCallback((updatedNode: WorkflowNode) => {
+    setWorkflows(ws => ws.map(w => {
+      if (w.id !== selectedId) return w;
+      return { ...w, nodes: w.nodes.map(n => n.id === updatedNode.id ? updatedNode : n) };
+    }));
+    setSelectedNode(updatedNode);
+  }, [selectedId]);
+
+  const updateEdge = useCallback((updatedEdge: WorkflowEdge) => {
+    setWorkflows(ws => ws.map(w => {
+      if (w.id !== selectedId) return w;
+      return { ...w, edges: w.edges.map(e => e.id === updatedEdge.id ? updatedEdge : e) };
+    }));
+    setSelectedEdge(updatedEdge);
+  }, [selectedId]);
 
   const handleSave = async () => {
     const wf = selectedWorkflow;
@@ -182,7 +507,6 @@ function WorkflowContent() {
     if (!hasStart) errors.push(t('المسار يجب أن يحتوي على عقدة بداية', 'Workflow must have a Start node'));
     if (!hasEnd) errors.push(t('المسار يجب أن يحتوي على عقدة نهاية', 'Workflow must have an End node'));
 
-    // Check orphan nodes
     const connectedNodes = new Set<string>();
     wf.edges.forEach(e => { connectedNodes.add(e.source); connectedNodes.add(e.target); });
     const orphans = wf.nodes.filter(n => n.type !== 'start' && n.type !== 'end' && !connectedNodes.has(n.id));
@@ -196,7 +520,6 @@ function WorkflowContent() {
     }
     setValidationErrors([]);
     setSaving(true);
-    // Backend integration point: PUT /api/workflows/:id
     await new Promise(r => setTimeout(r, 1000));
     setSaving(false);
     setSaveSuccess(true);
@@ -218,7 +541,7 @@ function WorkflowContent() {
       <WorkflowSelector
         workflows={workflows}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => { setSelectedId(id); setSelectedNode(null); setSelectedEdge(null); }}
         onNew={() => {
           const newWf: Workflow = {
             id: `wf-new-${Date.now()}`,
@@ -376,19 +699,56 @@ function WorkflowContent() {
           {t('التأليف يتطلب شاشة أكبر (≥1024px). يمكنك عرض وتشغيل المحاكاة.', 'Authoring requires a larger screen (≥1024px). You can view and simulate.')}
         </div>
 
-        {/* React Flow Canvas */}
-        <div className="flex-1 overflow-hidden">
-          <ReactFlowCanvas
-            workflow={selectedWorkflow}
-            simulating={simulating}
-            simStep={simStep}
-            isReadOnly={isReadOnly}
-            dragNodeType={dragNodeType}
-            onWorkflowChange={(wf) => setWorkflows(ws => ws.map(w => w.id === wf.id ? wf : w))}
-            onActionClick={(actionId) => router.push(ROUTES.governanceActionDetail(actionId))}
-            t={t}
-            lang={lang}
-          />
+        {/* Canvas + Inspector */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* React Flow Canvas */}
+          <div className="flex-1 overflow-hidden">
+            <ReactFlowCanvas
+              workflow={selectedWorkflow}
+              simulating={simulating}
+              simStep={simStep}
+              isReadOnly={isReadOnly}
+              dragNodeType={dragNodeType}
+              onWorkflowChange={(wf) => setWorkflows(ws => ws.map(w => w.id === wf.id ? wf : w))}
+              onActionClick={(actionId) => router.push(ROUTES.governanceActionDetail(actionId))}
+              onNodeSelect={setSelectedNode}
+              onEdgeSelect={setSelectedEdge}
+              t={t}
+              lang={lang}
+            />
+          </div>
+
+          {/* Contextual Inspector Panel */}
+          <div
+            className="flex flex-col"
+            style={{
+              width: 300,
+              flexShrink: 0,
+              borderInlineStart: '1px solid var(--border)',
+              background: 'var(--surface)',
+              overflow: 'hidden',
+            }}
+          >
+            {selectedNode ? (
+              <NodeInspector
+                node={selectedNode}
+                onUpdate={isReadOnly ? () => {} : updateNode}
+                onClose={() => setSelectedNode(null)}
+                t={t}
+                lang={lang}
+              />
+            ) : selectedEdge ? (
+              <EdgeInspector
+                edge={selectedEdge}
+                onUpdate={isReadOnly ? () => {} : updateEdge}
+                onClose={() => setSelectedEdge(null)}
+                t={t}
+                lang={lang}
+              />
+            ) : (
+              <EmptyInspector t={t} />
+            )}
+          </div>
         </div>
       </div>
     </div>

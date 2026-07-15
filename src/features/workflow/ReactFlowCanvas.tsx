@@ -7,20 +7,19 @@ import ReactFlow, {
   addEdge,
   useNodesState,
   useEdgesState,
-  type Node,
-  type Edge,
-  type Connection,
   BackgroundVariant,
   MarkerType,
 } from 'reactflow';
+import type { Node, Edge, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
-import type { Workflow, WorkflowNodeType } from '@/mocks/types';
+import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/mocks/types';
 import { NODE_TYPE_CONFIG } from './WorkflowPage';
 import { ACTIONS } from '@/mocks/data';
 
 // ─── Custom Node ──────────────────────────────────────────────────────────────
 const CustomNode = ({
   data,
+  selected,
 }: {
   data: {
     label: string;
@@ -32,6 +31,7 @@ const CustomNode = ({
     t: (ar: string, en: string) => string;
     lang: 'ar' | 'en';
   };
+  selected?: boolean;
 }) => {
   const cfg = NODE_TYPE_CONFIG[data.type];
   const action = data.actionId ? ACTIONS.find(a => a.id === data.actionId) : null;
@@ -40,14 +40,19 @@ const CustomNode = ({
     <div
       className="wf-node"
       style={{
-        borderColor: data.isActive && data.simulating
+        borderColor: selected
+          ? 'var(--accent)'
+          : data.isActive && data.simulating
           ? 'var(--success)'
           : cfg.color,
-        background: data.isActive && data.simulating
+        background: selected
+          ? 'var(--accent-subtle)'
+          : data.isActive && data.simulating
           ? 'var(--success-bg)'
           : 'var(--surface)',
         minWidth: 140,
         position: 'relative',
+        boxShadow: selected ? '0 0 0 2px var(--accent-muted)' : undefined,
       }}
     >
       <div className="flex items-center gap-2">
@@ -62,7 +67,7 @@ const CustomNode = ({
             {data.label}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {data.type === 'ar' ? cfg.ar : cfg.en}
+            {data.lang === 'ar' ? cfg.ar : cfg.en}
           </div>
         </div>
       </div>
@@ -106,6 +111,8 @@ interface Props {
   dragNodeType: WorkflowNodeType | null;
   onWorkflowChange: (wf: Workflow) => void;
   onActionClick: (actionId: string) => void;
+  onNodeSelect: (node: WorkflowNode | null) => void;
+  onEdgeSelect: (edge: WorkflowEdge | null) => void;
   t: (ar: string, en: string) => string;
   lang: 'ar' | 'en';
 }
@@ -118,6 +125,8 @@ export default function ReactFlowCanvas({
   dragNodeType,
   onWorkflowChange,
   onActionClick,
+  onNodeSelect,
+  onEdgeSelect,
   t,
   lang,
 }: Props) {
@@ -166,15 +175,49 @@ export default function ReactFlowCanvas({
 
   const onConnect = useCallback((params: Connection) => {
     if (isReadOnly) return;
-    setEdges(eds => addEdge({ ...params, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } }, eds));
-  }, [isReadOnly, setEdges]);
+    const newEdge = {
+      ...params,
+      type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed },
+    };
+    setEdges(eds => addEdge(newEdge, eds));
+    // Sync new edge to workflow
+    const edgeId = `edge-${Date.now()}`;
+    const wfEdge: WorkflowEdge = {
+      id: edgeId,
+      source: params.source || '',
+      target: params.target || '',
+    };
+    onWorkflowChange({
+      ...workflow,
+      edges: [...workflow.edges, wfEdge],
+    });
+  }, [isReadOnly, setEdges, workflow, onWorkflowChange]);
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    const wfNode = workflow.nodes.find(n => n.id === node.id);
+    onNodeSelect(wfNode || null);
+    onEdgeSelect(null);
+  }, [workflow.nodes, onNodeSelect, onEdgeSelect]);
+
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    const wfEdge = workflow.edges.find(e => e.id === edge.id);
+    onEdgeSelect(wfEdge || null);
+    onNodeSelect(null);
+  }, [workflow.edges, onEdgeSelect, onNodeSelect]);
+
+  const onPaneClick = useCallback(() => {
+    onNodeSelect(null);
+    onEdgeSelect(null);
+  }, [onNodeSelect, onEdgeSelect]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
     if (!dragNodeType || isReadOnly) return;
     event.preventDefault();
     const cfg = NODE_TYPE_CONFIG[dragNodeType];
+    const newNodeId = `node-drop-${Date.now()}`;
     const newNode: Node = {
-      id: `node-drop-${Date.now()}`,
+      id: newNodeId,
       type: 'custom',
       position: { x: event.clientX - 300, y: event.clientY - 100 },
       data: {
@@ -188,7 +231,18 @@ export default function ReactFlowCanvas({
       draggable: true,
     };
     setNodes(nds => [...nds, newNode]);
-  }, [dragNodeType, isReadOnly, lang, t, setNodes]);
+    // Sync to workflow
+    const wfNode: WorkflowNode = {
+      id: newNodeId,
+      type: dragNodeType,
+      label: { ar: cfg.ar, en: cfg.en },
+      position: { x: event.clientX - 300, y: event.clientY - 100 },
+    };
+    onWorkflowChange({
+      ...workflow,
+      nodes: [...workflow.nodes, wfNode],
+    });
+  }, [dragNodeType, isReadOnly, lang, t, setNodes, workflow, onWorkflowChange]);
 
   return (
     <div style={{ width: '100%', height: '100%' }} onDrop={onDrop} onDragOver={e => e.preventDefault()}>
@@ -198,6 +252,9 @@ export default function ReactFlowCanvas({
         onNodesChange={isReadOnly ? undefined : onNodesChange}
         onEdgesChange={isReadOnly ? undefined : onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
         attributionPosition="bottom-right"
