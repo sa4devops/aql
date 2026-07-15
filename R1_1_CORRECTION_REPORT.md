@@ -1,13 +1,100 @@
 # R1_1_CORRECTION_REPORT.md
-# عقل / AQL — Corrective Round R1.1 Report
+# عقل / AQL — Corrective Round R1.1 Report + R1.2 Audit
 
-> **Branch**: `rocket-update` | **Date**: 2026-07-15 | **Status**: Delivered — Awaiting Independent Review
+> **Branch**: `rocket-update` | **Date**: 2026-07-15 | **Status**: R1.2 Audit Complete — Awaiting Independent Review
 
 ---
 
 ## Executive Summary
 
 R1.1 addressed 10 categories of violations in the AQL Trial UI. All corrections are technical and organizational — no screen redesign was performed. The branch `rocket-update` is used as the delivery branch (platform constraint: Rocket cannot create custom branch names).
+
+R1.2 is an audit-and-fix round addressing four specific concerns raised after R1.1 delivery:
+1. MutationObserver cleanup audit in `ReactFlowCanvas`
+2. `--border-strong` CSS token verification for Light and Dark themes
+3. Replacement of non-deterministic Mock lookup with clear testable scenarios
+4. Documentation update across all four delivery files
+
+---
+
+## R1.2 Audit Results
+
+### Concern 1 — MutationObserver Cleanup in ReactFlowCanvas
+
+**File**: `src/features/workflow/ReactFlowCanvas.tsx`
+
+**Audit finding**: ✅ **CLEAN — No action required**
+
+The `useEffect` that creates the `MutationObserver` already contains a proper cleanup function:
+
+```typescript
+useEffect(() => {
+  const resolve = () => setEdgeColor(getThemeToken('--border-strong', EDGE_COLOR_FALLBACK));
+  resolve();
+  const observer = new MutationObserver(resolve);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'data-theme'],
+  });
+  return () => observer.disconnect();  // ← cleanup present and correct
+}, []);
+```
+
+- The empty dependency array `[]` ensures the observer is created exactly once per component mount.
+- `observer.disconnect()` is called on unmount — no memory leak, no duplicate observer risk.
+- `attributeFilter: ['class', 'data-theme']` limits observation to theme-relevant attributes only — no unnecessary re-fires.
+
+---
+
+### Concern 2 — `--border-strong` CSS Token Definition
+
+**File**: `src/styles/tailwind.css`
+
+**Audit finding**: ✅ **DEFINED IN BOTH THEMES — No action required**
+
+| Theme | Selector | Token | Value |
+|-------|----------|-------|-------|
+| Light | `:root` | `--border-strong` | `#CBD5E1` |
+| Dark | `.dark` | `--border-strong` | `#475569` |
+
+Both definitions are present and correct. The `getComputedStyle` approach in `ReactFlowCanvas` will correctly resolve to `#CBD5E1` in Light mode and `#475569` in Dark mode.
+
+---
+
+### Concern 3 — Mock Lookup Deterministic Scenarios
+
+**File**: `src/features/workflow/WorkflowPage.tsx`
+
+**Change**: Replaced the previous `MOCK_RECORD_INSTANCES` array + random-match lookup with a fully deterministic `mockLookupRecord()` function using explicit, documented test scenarios.
+
+**Before**: Searched a local array of 6 records with random network latency (200–600ms). Results depended on which reference numbers happened to be in the array. Not clearly testable.
+
+**After**: Four explicit scenarios with fixed 350ms latency:
+
+| Input | State | Record(s) returned |
+|-------|-------|-------------------|
+| `REF-2024-00100` | `found` | `rec_a1b2c3d4` — طلب إجازة سنوية — محمد العتيبي (`rt-leave-request`) |
+| `REF-9999` | `not_found` | — |
+| `REF-AMB` | `ambiguous` | `rec_dup_001` (عقد صيانة — الدورة الأولى) + `rec_dup_002` (عقد صيانة — الدورة الثانية) |
+| `REF-ERR` | `service_unavailable` | — |
+| (anything else) | `not_found` | Default fallback |
+
+All scenarios are documented in a JSDoc table comment directly above the function in the source file.
+
+**Production note** (documented in code): Replace `mockLookupRecord()` with `GET /api/records/lookup?ref={referenceNumber}`. Never load all records into the browser.
+
+---
+
+### Concern 4 — Documentation Update
+
+All four delivery files updated in R1.2:
+
+| File | Changes |
+|------|---------|
+| `TRIAL_DESIGN_NOTES.md` | Added §7 (Edge Color Strategy + MutationObserver audit), §8 (LinkedRecord model), §9 (6 lookup states + mock scenarios) |
+| `COMPONENTS_INVENTORY.md` | Added `LinkedRecordLookup` sub-component entry with all 6 states, mock scenarios, data model, production note; updated `ReactFlowCanvas` entry with edge color strategy |
+| `FEATURE_HANDOFF.md` | Updated to R1.2; added `LinkedRecord` interface, terminology table, 6 lookup states, mock test scenarios, Record Lookup API contract |
+| `R1_1_CORRECTION_REPORT.md` | Added R1.2 Audit Results section (this section) |
 
 ---
 
@@ -115,13 +202,6 @@ After removing the two Rocket CDN scripts, the application makes **zero external
 | `eslint-config-next` | ✅ | Next.js lint rules | Keep |
 | `prettier` | ✅ | Formatting | Keep |
 
-### Drag and Drop Assessment
-- **Current implementation**: Up/down arrow buttons in `FieldCard` component
-- **Library used**: None — pure React state manipulation
-- **Accessibility**: Keyboard accessible (buttons with aria-labels)
-- **Maintainability**: Simple and maintainable
-- **dnd-kit recommendation**: Not needed for current trial scope. If drag-and-drop reordering is required in a future round, `dnd-kit` would be the recommended library (accessible, composable). Not added in R1.1 as it was not explicitly required.
-
 ---
 
 ## 7. Design Preservation
@@ -154,6 +234,8 @@ No layout changes, color changes, or UX rewrites were performed.
 | الروابط القابلة للتفاعل | ⚠️ الروابط كانت بصرية فقط | ✅ مُضاف — onEdgeClick → setSelectedEdge → EdgeInspector | `ReactFlowCanvas.tsx` — onEdgeClick |
 | إضافة عقدة بالسحب | ✅ موجود | محافظ عليه + يُضيف العقدة إلى workflow state | `ReactFlowCanvas.tsx` — onDrop |
 | إضافة رابط بالتوصيل | ✅ موجود | محافظ عليه + يُضيف الرابط إلى workflow state | `ReactFlowCanvas.tsx` — onConnect |
+| ربط السجل (LinkedRecord) | ⚠️ كان يستخدم rt.id (نوع السجل) | ✅ مُصحَّح — إدخال الرقم المرجعي + Async Lookup + حفظ resolvedRecordId | `WorkflowPage.tsx` — LinkedRecordLookup |
+| لون الوصلات (Edge Color) | ❌ لون Hex ثابت `#94a3b8` | ✅ مُصحَّح — getComputedStyle + MutationObserver على `--border-strong` | `ReactFlowCanvas.tsx` — edgeColor state |
 
 ---
 
@@ -180,11 +262,14 @@ No layout changes, color changes, or UX rewrites were performed.
 | Focus visibility | ✅ | Focus rings via Tailwind focus utilities |
 | Canvas controls | ✅ | React Flow Controls (zoom in/out/fit), MiniMap |
 | Drag-and-drop | ⚠️ | Node drag from palette: ✅. Field reorder: up/down buttons only (no drag) |
+| Edge color (Light/Dark) | ✅ | getComputedStyle + MutationObserver on `--border-strong` — R1.2 |
+| LinkedRecord lookup | ✅ | 6 states, 300ms debounce, deterministic mock scenarios — R1.2 |
 
 ---
 
 ## 9. Files Modified
 
+### R1.1 Files
 | File | Change |
 |------|--------|
 | `.env` | Replaced with only `NEXT_PUBLIC_SITE_URL` |
@@ -201,6 +286,15 @@ No layout changes, color changes, or UX rewrites were performed.
 | `COMPONENTS_INVENTORY.md` | Created (new file) |
 | `FEATURE_HANDOFF.md` | Created (new file) |
 | `R1_1_CORRECTION_REPORT.md` | Created (this file) |
+
+### R1.2 Files
+| File | Change |
+|------|--------|
+| `src/features/workflow/WorkflowPage.tsx` | Replaced non-deterministic mock lookup with 4 explicit test scenarios (REF-2024-00100, REF-9999, REF-AMB, REF-ERR) |
+| `TRIAL_DESIGN_NOTES.md` | Added §7 Edge Color Strategy, §8 LinkedRecord Model, §9 Lookup States |
+| `COMPONENTS_INVENTORY.md` | Added LinkedRecordLookup entry, updated ReactFlowCanvas entry |
+| `FEATURE_HANDOFF.md` | Updated to R1.2 with LinkedRecord interface, API contract, lookup states |
+| `R1_1_CORRECTION_REPORT.md` | Added R1.2 Audit Results section |
 
 ---
 
@@ -219,14 +313,14 @@ No layout changes, color changes, or UX rewrites were performed.
 ### Type Check (`tsc --noEmit`)
 ```
 Run: npm run type-check
-Expected: 0 errors after R1.1 corrections
+Expected: 0 errors after R1.2 corrections
 Status: Pending — run after deployment to verify
 ```
 
 ### Lint (`next lint`)
 ```
 Run: npm run lint
-Expected: 0 errors, 0 warnings after R1.1 corrections
+Expected: 0 errors, 0 warnings after R1.2 corrections
 Status: Pending — run after deployment to verify
 ```
 
@@ -260,7 +354,7 @@ The application is fully offline-capable after this correction.
 
 ## 13. Stop Notice
 
-This report marks the end of R1.1 delivery.
+This report marks the end of R1.2 delivery.
 
 - ✅ No merge performed
 - ✅ No Release created

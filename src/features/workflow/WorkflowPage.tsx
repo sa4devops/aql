@@ -48,31 +48,28 @@ const ACTION_TYPE_CONFIG: Record<WorkflowActionType, { ar: string; en: string; i
   },
 };
 
-// ─── Mock Record Instances ────────────────────────────────────────────────────
+// ─── Mock Async Lookup — Deterministic Test Scenarios ────────────────────────
 /**
- * AGENT NOTE — Mock Lookup Data (2026-07-15)
+ * AGENT NOTE — Mock Lookup Test Scenarios (2026-07-15)
  *
- * AR: هذه البيانات للتجربة فقط. التنفيذ الحقيقي سيستخدم Backend Lookup API
- *     ولن يحمل السجلات في المتصفح. يجب حذف هذا الكائن عند الانتقال للإنتاج.
+ * AR: هذه السيناريوهات محددة وقابلة للاختبار. كل رقم مرجعي يُعيد حالة واضحة
+ *     ومتوقعة بغض النظر عن وقت الاستدعاء. لا عشوائية في النتائج.
+ *     التنفيذ الحقيقي سيستبدل هذه الدالة باستدعاء Backend Lookup API.
  *
- * EN: This mock data is for the trial phase ONLY. Production will use a
- *     Backend Lookup API — records must NOT be loaded into the browser.
- *     Delete this object when moving to production.
- */
-const MOCK_RECORD_INSTANCES: LinkedRecord[] = [
-  { recordReferenceNumber: 'REF-2024-00451', resolvedRecordId: 'rec_7f3a9b2c', recordDisplayName: 'طلب إجازة — أحمد الزهراني', recordTypeId: 'rt-leave-request' },
-  { recordReferenceNumber: 'REF-2024-00452', resolvedRecordId: 'rec_8a1b3c4d', recordDisplayName: 'مراسلة واردة — وزارة المالية', recordTypeId: 'rt-incoming-mail' },
-  { recordReferenceNumber: 'REF-2024-00453', resolvedRecordId: 'rec_9c2d4e5f', recordDisplayName: 'طلب شراء — معدات مكتبية', recordTypeId: 'rt-purchase-request' },
-  { recordReferenceNumber: 'REF-2024-00454', resolvedRecordId: 'rec_0d3e5f6a', recordDisplayName: 'شكوى موظف — قسم الموارد البشرية', recordTypeId: 'rt-hr-complaint' },
-  // Intentional duplicate to test ambiguous state
-  { recordReferenceNumber: 'REF-2024-00455', resolvedRecordId: 'rec_1e4f6a7b', recordDisplayName: 'عقد خدمات — شركة الاتصالات أ', recordTypeId: 'rt-contract' },
-  { recordReferenceNumber: 'REF-2024-00455', resolvedRecordId: 'rec_2f5a7b8c', recordDisplayName: 'عقد خدمات — شركة الاتصالات ب', recordTypeId: 'rt-contract' },
-];
-
-// ─── Mock Async Lookup Function ───────────────────────────────────────────────
-/**
- * Simulates a Backend Lookup API call with realistic async behavior.
- * Returns one of: found | not_found | ambiguous | service_unavailable
+ * EN: These are deterministic, testable scenarios. Each reference number
+ *     returns a predictable, documented state regardless of call timing.
+ *     No randomness in results — only in simulated network latency.
+ *     Production will replace this function with a real Backend Lookup API call.
+ *
+ * ┌─────────────────────┬───────────────────────┬──────────────────────────────────────────────┐
+ * │ Input (ref)         │ State returned        │ Description                                  │
+ * ├─────────────────────┼───────────────────────┼──────────────────────────────────────────────┤
+ * │ REF-2024-00100      │ found                 │ Exactly one record matches — happy path      │
+ * │ REF-9999            │ not_found             │ No record exists with this reference number  │
+ * │ REF-AMB             │ ambiguous             │ Two records share this reference (duplicate) │
+ * │ REF-ERR             │ service_unavailable   │ Simulated API/network failure                │
+ * │ (anything else)     │ not_found             │ Default fallback for unrecognised refs        │
+ * └─────────────────────┴───────────────────────┴──────────────────────────────────────────────┘
  *
  * PRODUCTION NOTE: Replace this function with a real API call:
  *   GET /api/records/lookup?ref={referenceNumber}
@@ -80,21 +77,57 @@ const MOCK_RECORD_INSTANCES: LinkedRecord[] = [
  * Never load all records into the browser for large datasets.
  */
 async function mockLookupRecord(ref: string): Promise<{ state: 'found' | 'not_found' | 'ambiguous' | 'service_unavailable'; records: LinkedRecord[] }> {
-  // Simulate network latency (200–600ms)
-  await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
+  // Simulate network latency (fixed 350ms for deterministic UX testing)
+  await new Promise(r => setTimeout(r, 350));
 
-  // Simulate service unavailable for refs starting with 'ERR'
-  if (ref.toUpperCase().startsWith('ERR')) {
+  const normalised = ref.trim().toUpperCase();
+
+  // Scenario 1 — FOUND: REF-2024-00100 returns exactly one record
+  if (normalised === 'REF-2024-00100') {
+    return {
+      state: 'found',
+      records: [{
+        recordReferenceNumber: 'REF-2024-00100',
+        resolvedRecordId: 'rec_a1b2c3d4',
+        recordDisplayName: 'طلب إجازة سنوية — محمد العتيبي',
+        recordTypeId: 'rt-leave-request',
+      }],
+    };
+  }
+
+  // Scenario 2 — NOT FOUND: REF-9999 matches no record
+  if (normalised === 'REF-9999') {
+    return { state: 'not_found', records: [] };
+  }
+
+  // Scenario 3 — AMBIGUOUS: REF-AMB matches two records with the same reference number
+  if (normalised === 'REF-AMB') {
+    return {
+      state: 'ambiguous',
+      records: [
+        {
+          recordReferenceNumber: 'REF-AMB',
+          resolvedRecordId: 'rec_dup_001',
+          recordDisplayName: 'عقد صيانة — الدورة الأولى',
+          recordTypeId: 'rt-contract',
+        },
+        {
+          recordReferenceNumber: 'REF-AMB',
+          resolvedRecordId: 'rec_dup_002',
+          recordDisplayName: 'عقد صيانة — الدورة الثانية',
+          recordTypeId: 'rt-contract',
+        },
+      ],
+    };
+  }
+
+  // Scenario 4 — SERVICE UNAVAILABLE: REF-ERR simulates an API/network failure
+  if (normalised === 'REF-ERR') {
     return { state: 'service_unavailable', records: [] };
   }
 
-  const matches = MOCK_RECORD_INSTANCES.filter(r =>
-    r.recordReferenceNumber.toLowerCase() === ref.toLowerCase()
-  );
-
-  if (matches.length === 0) return { state: 'not_found', records: [] };
-  if (matches.length === 1) return { state: 'found', records: matches };
-  return { state: 'ambiguous', records: matches };
+  // Default fallback — any other reference number returns not_found
+  return { state: 'not_found', records: [] };
 }
 
 // ─── Linked Record Lookup Component ──────────────────────────────────────────

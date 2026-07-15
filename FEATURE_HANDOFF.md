@@ -1,7 +1,7 @@
 # FEATURE_HANDOFF.md
 # عقل / AQL — Feature Handoff Document
 
-> **Trial Round**: R1.1 | **Status**: Frontend Mock Only | **Date**: 2026-07-15
+> **Trial Round**: R1.2 | **Status**: Frontend Mock Only | **Date**: 2026-07-15
 
 ---
 
@@ -52,6 +52,26 @@ All TypeScript interfaces in `src/mocks/types.ts`:
 - `Action`, `ActionInput`, `ActionOutput`, `ActionPermission`
 - `MockUser`, `Department`, `RecordInstance`
 - `StatusValue`, `RiskLevel`, `ClassificationLevel`, `UserRole`, `FieldType`
+- `LinkedRecord`, `LinkedRecordLookupState` ← **Added in R1.2**
+
+### LinkedRecord Interface (R1.2)
+```typescript
+interface LinkedRecord {
+  recordReferenceNumber: string;  // user-visible reference (e.g. "REF-2024-00100")
+  resolvedRecordId: string;       // stable internal DB id (e.g. "rec_a1b2c3d4")
+  recordDisplayName: string;      // human-readable label shown after lookup
+  recordTypeId: string;           // Record Type this instance belongs to (e.g. "rt-leave-request")
+}
+```
+
+### Terminology Clarification (R1.2)
+| Term | Definition |
+|------|-----------|
+| **Record Type** | Schema / blueprint (e.g. `rt-leave-request`) |
+| **Record Reference Number** | User-visible ID of an actual record instance (e.g. `REF-2024-00100`) |
+| **Internal Record ID** | Stable DB identifier — never changes (e.g. `rec_a1b2c3d4`) |
+
+The system stores `resolvedRecordId` (not `recordReferenceNumber`) to prevent broken links if the display format changes.
 
 ---
 
@@ -66,6 +86,26 @@ All TypeScript interfaces in `src/mocks/types.ts`:
 | Empty (no sections/fields) | Builder |
 | Simulation (step-by-step) | Workflow |
 | Loading guard (hydration) | Builder, Workflow |
+| LinkedRecord lookup (6 states) | Workflow — NodeInspector |
+
+### LinkedRecord Lookup States (R1.2)
+| State | Description |
+|-------|-------------|
+| `idle` | Field empty — hint text shown |
+| `searching` | 300ms debounce fired — spinner shown |
+| `found` | One record matched — green card with name and IDs |
+| `not_found` | No match — red inline message |
+| `ambiguous` | Multiple matches — yellow picker list |
+| `service_unavailable` | Simulated API failure — red card with retry hint |
+
+### Mock Test Scenarios (Deterministic — R1.2)
+| Input | State | Notes |
+|-------|-------|-------|
+| `REF-2024-00100` | `found` | Returns one record: طلب إجازة سنوية — محمد العتيبي |
+| `REF-9999` | `not_found` | No matching record |
+| `REF-AMB` | `ambiguous` | Returns two contract records with same reference |
+| `REF-ERR` | `service_unavailable` | Simulates API/network failure |
+| (anything else) | `not_found` | Default fallback |
 
 ---
 
@@ -83,6 +123,26 @@ These are marked as comments in the code (`// Backend integration point:`):
 | Get Action | GET | `/api/actions/:id` |
 | List Records | GET | `/api/records` |
 | Create Record | POST | `/api/records` |
+| **Lookup Record by Reference** | **GET** | **`/api/records/lookup?ref={referenceNumber}`** ← **Added R1.2** |
+
+### Record Lookup API Contract (R1.2)
+```
+GET /api/records/lookup?ref={referenceNumber}
+
+Success (200):
+  { "record": { "recordReferenceNumber": "...", "resolvedRecordId": "...", "recordDisplayName": "...", "recordTypeId": "..." } }
+
+Not Found (404):
+  { "error": "not_found" }
+
+Ambiguous (409):
+  { "error": "ambiguous", "records": [ ...LinkedRecord[] ] }
+
+Service Error (500/503):
+  { "error": "service_unavailable" }
+```
+
+**Critical**: This API must NOT return all records. It must accept a reference number and return only the matching record(s). Never load all records into the browser.
 
 ---
 
@@ -132,6 +192,7 @@ These are marked as comments in the code (`// Backend integration point:`):
 - Full keyboard navigation on React Flow canvas
 - Mobile layout for builder screens (desktop-first)
 - Offline font files (referenced but may not be physically present — falls back to system fonts)
+- Backend Lookup API for LinkedRecord (replaced by deterministic mock scenarios in trial)
 
 ---
 
@@ -142,6 +203,7 @@ These are marked as comments in the code (`// Backend integration point:`):
 - Workflow CRUD + publish/version API
 - Action Registry API with audit log
 - Record Instance CRUD + search/filter API
+- **Record Lookup API** (`GET /api/records/lookup?ref=`) ← **Required for LinkedRecord feature**
 - File upload service (for attachment fields)
 - Notification service
 - Permission/RBAC service

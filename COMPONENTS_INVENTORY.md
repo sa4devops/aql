@@ -1,7 +1,7 @@
 # COMPONENTS_INVENTORY.md
 # عقل / AQL — Components Inventory
 
-> Generated for R1.1 delivery. All components are local — no external component libraries.
+> Generated for R1.1 delivery. Updated in R1.2 audit. All components are local — no external component libraries.
 
 ---
 
@@ -79,9 +79,42 @@
 - **Sub-components**:
   - `WorkflowSelector` — Left panel listing all workflows
   - `NodePalette` — Draggable node type palette
-  - `NodeInspector` — Contextual inspector for selected node (Name AR/EN, Type, Role, Deadline, Conditions)
+  - `NodeInspector` — Contextual inspector for selected node (Name AR/EN, Type, Role, Deadline, Conditions, LinkedRecord)
   - `EdgeInspector` — Contextual inspector for selected edge (Label AR/EN, Condition)
   - `EmptyInspector` — Placeholder when nothing selected
+  - `LinkedRecordLookup` — Debounced async lookup component for linking actual record instances (see below)
+
+### LinkedRecordLookup (sub-component of WorkflowPage)
+- **Path**: `src/features/workflow/WorkflowPage.tsx` (inline component)
+- **Purpose**: Allows users to link a workflow node to an actual record instance by entering its reference number. Uses 300ms debounced mock async lookup with 6 distinct states.
+- **States**:
+  | State | Description |
+  |-------|-------------|
+  | `idle` | Field empty — shows hint text |
+  | `searching` | Debounce fired — shows spinner |
+  | `found` | One record matched — shows green card with name and IDs |
+  | `not_found` | No match — shows red inline message |
+  | `ambiguous` | Multiple matches — shows yellow picker list |
+  | `service_unavailable` | Simulated API failure — shows red card with retry hint |
+- **Mock Test Scenarios** (deterministic — R1.2):
+  | Input | State | Record |
+  |-------|-------|--------|
+  | `REF-2024-00100` | `found` | طلب إجازة سنوية — محمد العتيبي (`rec_a1b2c3d4`) |
+  | `REF-9999` | `not_found` | — |
+  | `REF-AMB` | `ambiguous` | Two contract records with same reference |
+  | `REF-ERR` | `service_unavailable` | Simulated failure |
+  | (other) | `not_found` | Default fallback |
+- **Data model stored on success**:
+  ```typescript
+  linkedRecord: {
+    recordReferenceNumber: string;  // user input
+    resolvedRecordId: string;       // stable internal DB id
+    recordDisplayName: string;      // human-readable label
+    recordTypeId: string;           // Record Type this instance belongs to
+  }
+  ```
+- **Production note**: Replace `mockLookupRecord()` with `GET /api/records/lookup?ref={ref}`. Never load all records into the browser.
+- **Debounce**: 300ms — prevents excessive API calls while user is typing
 
 ### ReactFlowCanvas
 - **Path**: `src/features/workflow/ReactFlowCanvas.tsx`
@@ -93,6 +126,11 @@
 - **Reusable**: No — tightly coupled to WorkflowPage
 - **Dependencies**: `reactflow`, `@/mocks/types`, `WorkflowPage` (NODE_TYPE_CONFIG)
 - **Interactions**: Node click → select + open Inspector, Edge click → select + open Inspector, Pane click → deselect, Drag from palette → add node, Connect handles → add edge
+- **Edge Color Strategy (R1.2)**:
+  - Uses `getComputedStyle(document.documentElement).getPropertyValue('--border-strong')` to read the resolved token value at runtime.
+  - A `MutationObserver` on `<html>` (`class` + `data-theme` attributes) re-reads the token when the theme changes.
+  - Cleanup: `return () => observer.disconnect()` in `useEffect` — confirmed no memory leaks or duplicate observers.
+  - SSR fallback: `#94a3b8` (Light theme value) used only when `window` is unavailable.
 
 ### RecordsPage
 - **Path**: `src/features/records/RecordsPage.tsx`
@@ -125,7 +163,10 @@
 ### types.ts
 - **Path**: `src/mocks/types.ts`
 - **Purpose**: All TypeScript interfaces and types
-- **Exports**: `RecordType`, `RecordField`, `RecordSection`, `Workflow`, `WorkflowNode`, `WorkflowEdge`, `Action`, `MockUser`, etc.
+- **Exports**: `RecordType`, `RecordField`, `RecordSection`, `Workflow`, `WorkflowNode`, `WorkflowEdge`, `Action`, `MockUser`, `LinkedRecord`, `LinkedRecordLookupState`, etc.
+- **Key types added in R1.2**:
+  - `LinkedRecord` — 4-field interface: `recordReferenceNumber`, `resolvedRecordId`, `recordDisplayName`, `recordTypeId`
+  - `LinkedRecordLookupState` — union type: `'idle' | 'searching' | 'found' | 'not_found' | 'ambiguous' | 'service_unavailable'`
 
 ### data.ts
 - **Path**: `src/mocks/data.ts`
