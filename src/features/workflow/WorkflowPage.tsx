@@ -236,18 +236,39 @@ const NodeInspector = ({
            * Always display the reference ID alongside the name in the select UI
            * so the user can accurately identify the record type.
            */}
-          <select
+          <input
+            type="text"
             className="input-base"
             value={node.linkedRecordType || ''}
             onChange={e => onUpdate({ ...node, linkedRecordType: e.target.value || undefined })}
-          >
-            <option value="">{t('— غير مرتبط —', '— Not linked —')}</option>
-            {RECORD_TYPES.map(rt => (
-              <option key={`rt-opt-${rt.id}`} value={rt.id}>
-                {rt.id} — {lang === 'ar' ? rt.name.ar : rt.name.en}
-              </option>
-            ))}
-          </select>
+            placeholder={t('أدخل رقم السجل (مثال: rt-001)', 'Enter record ID (e.g. rt-001)')}
+            dir="ltr"
+          />
+          {(() => {
+            const matched = node.linkedRecordType
+              ? RECORD_TYPES.find(rt => rt.id === node.linkedRecordType)
+              : null;
+            if (node.linkedRecordType && matched) {
+              return (
+                <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: 'var(--color-success, #16a34a)' }}>
+                  <span>✓</span>
+                  <span>{lang === 'ar' ? matched.name.ar : matched.name.en}</span>
+                </div>
+              );
+            }
+            if (node.linkedRecordType && !matched) {
+              return (
+                <div className="text-xs mt-1" style={{ color: 'var(--color-danger, #dc2626)' }}>
+                  {t('رقم السجل غير موجود', 'Record ID not found')}
+                </div>
+              );
+            }
+            return (
+              <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                {t('أدخل رقم السجل للربط التلقائي', 'Enter a record ID to auto-link')}
+              </div>
+            );
+          })()}
           {node.linkedRecordType && (
             <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
               {t('سيعمل هذا الإجراء على سجلات من هذا النوع', 'This action will operate on records of this type')}

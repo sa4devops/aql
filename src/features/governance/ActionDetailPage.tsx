@@ -578,7 +578,6 @@ function ActionDetailContent() {
               onClick={() => setActiveTab(tab.id)}
               className="px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
               style={{
-                borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
                 color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-secondary)',
                 background: 'none',
                 border: 'none',
