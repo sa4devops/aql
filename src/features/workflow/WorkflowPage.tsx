@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import AppShell, { useApp } from '@/components/AppShell';
-import { WORKFLOWS } from '@/mocks/data';
-import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/mocks/types';
+import { WORKFLOWS, RECORD_TYPES } from '@/mocks/data';
+import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, WorkflowActionType } from '@/mocks/types';
 import { ROUTES } from '@/app-routes/routes';
 import { useRouter } from 'next/navigation';
 
@@ -18,6 +18,34 @@ export const NODE_TYPE_CONFIG: Record<WorkflowNodeType, { ar: string; en: string
   action: { ar: 'إجراء', en: 'Action', color: 'var(--info)', icon: '⚡' },
   notification: { ar: 'إشعار', en: 'Notification', color: 'var(--gray-500)', icon: '🔔' },
   end: { ar: 'انتهاء', en: 'End', color: 'var(--error)', icon: '■' },
+};
+
+// ─── Action Type Config ───────────────────────────────────────────────────────
+const ACTION_TYPE_CONFIG: Record<WorkflowActionType, { ar: string; en: string; icon: string; description: { ar: string; en: string } }> = {
+  manual_task: {
+    ar: 'مهمة يدوية',
+    en: 'Manual Task',
+    icon: '👤',
+    description: { ar: 'مهمة تتطلب تدخلاً بشرياً مباشراً', en: 'Task requiring direct human intervention' },
+  },
+  automated_task: {
+    ar: 'مهمة آلية',
+    en: 'Automated Task',
+    icon: '⚙️',
+    description: { ar: 'مهمة تُنفَّذ تلقائياً بواسطة النظام', en: 'Task executed automatically by the system' },
+  },
+  external_integration: {
+    ar: 'تكامل خارجي',
+    en: 'External Integration',
+    icon: '🔗',
+    description: { ar: 'استدعاء خدمة أو جهة خارجية عبر API', en: 'Call an external service or third-party via API' },
+  },
+  llm_prompt: {
+    ar: 'مهمة ذكاء اصطناعي (LLM)',
+    en: 'AI / LLM Task',
+    icon: '🤖',
+    description: { ar: 'إرسال برومت إلى نموذج لغوي لتنفيذ مهمة', en: 'Send a prompt to an LLM to perform a task' },
+  },
 };
 
 // ─── Workflow Node Inspector ──────────────────────────────────────────────────
@@ -41,6 +69,9 @@ const NodeInspector = ({
     manager: { ar: 'مدير', en: 'Manager' },
     system_admin: { ar: 'مسؤول نظام', en: 'System Admin' },
   };
+
+  const showActionType = node.type !== 'start' && node.type !== 'end';
+  const selectedActionTypeCfg = node.actionType ? ACTION_TYPE_CONFIG[node.actionType] : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -110,6 +141,105 @@ const NodeInspector = ({
             <span style={{ color: cfg.color }}>{cfg.icon}</span>
             <span>{lang === 'ar' ? cfg.ar : cfg.en}</span>
           </div>
+        </div>
+
+        {/* ── Action Type ── */}
+        {showActionType && (
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+              {t('نوع الإجراء', 'Action Type')}
+            </label>
+            <div className="space-y-1">
+              {(Object.entries(ACTION_TYPE_CONFIG) as [WorkflowActionType, typeof ACTION_TYPE_CONFIG[WorkflowActionType]][]).map(([type, atCfg]) => (
+                <button
+                  key={`at-${type}`}
+                  type="button"
+                  onClick={() => onUpdate({ ...node, actionType: type, llmPrompt: type !== 'llm_prompt' ? undefined : node.llmPrompt, integrationTarget: type !== 'external_integration' ? undefined : node.integrationTarget })}
+                  className="w-full flex items-start gap-2 px-3 py-2 rounded-md text-start transition-colors"
+                  style={{
+                    border: `1px solid ${node.actionType === type ? 'var(--accent)' : 'var(--border)'}`,
+                    background: node.actionType === type ? 'var(--accent-subtle)' : 'var(--background)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span className="text-sm mt-0.5">{atCfg.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium" style={{ color: node.actionType === type ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      {lang === 'ar' ? atCfg.ar : atCfg.en}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {lang === 'ar' ? atCfg.description.ar : atCfg.description.en}
+                    </div>
+                  </div>
+                  {node.actionType === type && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }}><polyline points="20 6 9 17 4 12"/></svg>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* LLM Prompt field */}
+            {node.actionType === 'llm_prompt' && (
+              <div className="mt-3">
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  {t('البرومت (Prompt)', 'Prompt')} <span style={{ color: 'var(--error)' }}>*</span>
+                </label>
+                <textarea
+                  className="input-base"
+                  rows={4}
+                  value={node.llmPrompt || ''}
+                  onChange={e => onUpdate({ ...node, llmPrompt: e.target.value })}
+                  placeholder={t('اكتب التعليمات التي سيُرسلها النظام إلى النموذج اللغوي...', 'Write the instructions to be sent to the LLM...')}
+                  dir="auto"
+                  style={{ resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                />
+                <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {t('سيُرسل هذا البرومت إلى نموذج الذكاء الاصطناعي عند تنفيذ هذه الخطوة', 'This prompt will be sent to the AI model when this step executes')}
+                </div>
+              </div>
+            )}
+
+            {/* External Integration target */}
+            {node.actionType === 'external_integration' && (
+              <div className="mt-3">
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  {t('الجهة / الخدمة الخارجية', 'External Service / Target')}
+                </label>
+                <input
+                  type="text"
+                  className="input-base"
+                  value={node.integrationTarget || ''}
+                  onChange={e => onUpdate({ ...node, integrationTarget: e.target.value })}
+                  placeholder={t('مثال: SAP، Salesforce، REST API...', 'e.g. SAP, Salesforce, REST API...')}
+                  dir="auto"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Linked Record Type ── */}
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+            {t('نوع السجل المرتبط', 'Linked Record Type')}
+          </label>
+          <select
+            className="input-base"
+            value={node.linkedRecordType || ''}
+            onChange={e => onUpdate({ ...node, linkedRecordType: e.target.value || undefined })}
+          >
+            <option value="">{t('— غير مرتبط —', '— Not linked —')}</option>
+            {RECORD_TYPES.map(rt => (
+              <option key={`rt-opt-${rt.id}`} value={rt.id}>
+                {lang === 'ar' ? rt.name.ar : rt.name.en}
+              </option>
+            ))}
+          </select>
+          {node.linkedRecordType && (
+            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              {t('سيعمل هذا الإجراء على سجلات من هذا النوع', 'This action will operate on records of this type')}
+            </div>
+          )}
         </div>
 
         {/* Assigned Role (for task nodes) */}
@@ -465,6 +595,143 @@ export const NodePalette = ({
   </div>
 );
 
+// ─── Workflow Management Toolbar ──────────────────────────────────────────────
+type WorkflowRunState = 'idle' | 'running' | 'paused' | 'archived';
+
+const WorkflowManagementBar = ({
+  workflow,
+  runState,
+  onRun,
+  onPause,
+  onStop,
+  onArchive,
+  t,
+  lang,
+}: {
+  workflow: Workflow;
+  runState: WorkflowRunState;
+  onRun: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onArchive: () => void;
+  t: (ar: string, en: string) => string;
+  lang: 'ar' | 'en';
+}) => {
+  const statusConfig: Record<WorkflowRunState, { label: { ar: string; en: string }; color: string; bg: string; dot: string }> = {
+    idle: { label: { ar: 'جاهز', en: 'Ready' }, color: '#64748b', bg: '#f1f5f9', dot: '#94a3b8' },
+    running: { label: { ar: 'قيد التشغيل', en: 'Running' }, color: '#16a34a', bg: '#dcfce7', dot: '#22c55e' },
+    paused: { label: { ar: 'متوقف مؤقتاً', en: 'Paused' }, color: '#d97706', bg: '#fef3c7', dot: '#f59e0b' },
+    archived: { label: { ar: 'مؤرشف', en: 'Archived' }, color: '#6b7280', bg: '#f3f4f6', dot: '#9ca3af' },
+  };
+
+  const sc = statusConfig[runState];
+
+  return (
+    <div
+      className="flex items-center gap-2 px-4 py-2"
+      style={{
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--surface)',
+        flexShrink: 0,
+      }}
+    >
+      {/* Status indicator */}
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+        style={{ background: sc.bg, color: sc.color }}
+      >
+        <span
+          className="rounded-full"
+          style={{
+            width: 7,
+            height: 7,
+            background: sc.dot,
+            display: 'inline-block',
+            boxShadow: runState === 'running' ? `0 0 0 3px ${sc.dot}40` : undefined,
+          }}
+        />
+        {lang === 'ar' ? sc.label.ar : sc.label.en}
+      </div>
+
+      <div className="w-px h-4" style={{ background: 'var(--border)' }} />
+
+      {/* Run */}
+      <button
+        className="btn btn-sm flex items-center gap-1.5"
+        onClick={onRun}
+        disabled={runState === 'running' || runState === 'archived'}
+        title={t('تشغيل المسار', 'Run Workflow')}
+        style={{
+          background: runState === 'running' ? 'var(--success-bg)' : undefined,
+          color: runState === 'running' ? 'var(--success-text)' : undefined,
+          borderColor: runState === 'running' ? 'var(--success-border)' : undefined,
+          opacity: runState === 'archived' ? 0.4 : 1,
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span className="text-xs">{t('تشغيل', 'Run')}</span>
+      </button>
+
+      {/* Pause */}
+      <button
+        className="btn btn-sm flex items-center gap-1.5"
+        onClick={onPause}
+        disabled={runState !== 'running'}
+        title={t('إيقاف مؤقت', 'Pause')}
+        style={{ opacity: runState !== 'running' ? 0.4 : 1 }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        <span className="text-xs">{t('إيقاف مؤقت', 'Pause')}</span>
+      </button>
+
+      {/* Stop */}
+      <button
+        className="btn btn-sm flex items-center gap-1.5"
+        onClick={onStop}
+        disabled={runState === 'idle' || runState === 'archived'}
+        title={t('إيقاف', 'Stop')}
+        style={{ opacity: (runState === 'idle' || runState === 'archived') ? 0.4 : 1 }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+        <span className="text-xs">{t('إيقاف', 'Stop')}</span>
+      </button>
+
+      <div className="w-px h-4" style={{ background: 'var(--border)' }} />
+
+      {/* Archive */}
+      <button
+        className="btn btn-sm flex items-center gap-1.5"
+        onClick={onArchive}
+        disabled={runState === 'archived' || runState === 'running'}
+        title={t('أرشفة المسار', 'Archive Workflow')}
+        style={{
+          opacity: (runState === 'archived' || runState === 'running') ? 0.4 : 1,
+          color: runState === 'archived' ? 'var(--text-muted)' : undefined,
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        <span className="text-xs">{t('أرشفة', 'Archive')}</span>
+      </button>
+
+      {/* Workflow name + status badge */}
+      <div className="ms-auto flex items-center gap-2">
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {lang === 'ar' ? workflow.name.ar : workflow.name.en}
+        </span>
+        <span
+          className="badge text-xs"
+          style={{
+            background: workflow.status === 'published' ? 'var(--success-bg)' : 'var(--gray-100)',
+            color: workflow.status === 'published' ? 'var(--success-text)' : 'var(--gray-600)',
+          }}
+        >
+          {workflow.status === 'published' ? t('منشور', 'Published') : t('مسودة', 'Draft')}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Workflow Page ───────────────────────────────────────────────────────
 function WorkflowContent() {
   const { lang, t, simRole } = useApp();
@@ -479,9 +746,17 @@ function WorkflowContent() {
   const [simStep, setSimStep] = useState(0);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<WorkflowEdge | null>(null);
+  const [runState, setRunState] = useState<WorkflowRunState>('idle');
   const isReadOnly = simRole === 'employee' || simRole === 'supervisor';
 
   const selectedWorkflow = workflows.find(w => w.id === selectedId) || workflows[0];
+
+  // Reset run state when switching workflows
+  useEffect(() => {
+    setRunState('idle');
+    setSelectedNode(null);
+    setSelectedEdge(null);
+  }, [selectedId]);
 
   const updateNode = useCallback((updatedNode: WorkflowNode) => {
     setWorkflows(ws => ws.map(w => {
@@ -535,6 +810,15 @@ function WorkflowContent() {
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  // Workflow management handlers
+  const handleRun = () => setRunState('running');
+  const handlePause = () => setRunState('paused');
+  const handleStop = () => setRunState('idle');
+  const handleArchive = () => {
+    setRunState('archived');
+    setWorkflows(ws => ws.map(w => w.id === selectedId ? { ...w, status: 'draft' } : w));
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Workflow Selector */}
@@ -572,6 +856,19 @@ function WorkflowContent() {
 
       {/* Canvas Area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+        {/* ── Workflow Management Bar ── */}
+        <WorkflowManagementBar
+          workflow={selectedWorkflow}
+          runState={runState}
+          onRun={handleRun}
+          onPause={handlePause}
+          onStop={handleStop}
+          onArchive={handleArchive}
+          t={t}
+          lang={lang}
+        />
+
         {/* Canvas Toolbar */}
         <div
           className="flex items-center gap-2 px-4 py-2"
@@ -580,15 +877,6 @@ function WorkflowContent() {
           <div className="flex-1">
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
               {lang === 'ar' ? selectedWorkflow.name.ar : selectedWorkflow.name.en}
-            </span>
-            <span
-              className="badge ms-2"
-              style={{
-                background: selectedWorkflow.status === 'published' ? 'var(--success-bg)' : 'var(--gray-100)',
-                color: selectedWorkflow.status === 'published' ? 'var(--success-text)' : 'var(--gray-600)',
-              }}
-            >
-              {selectedWorkflow.status === 'published' ? t('منشور', 'Published') : t('مسودة', 'Draft')}
             </span>
           </div>
 

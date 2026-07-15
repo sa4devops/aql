@@ -98,6 +98,9 @@ export interface RecordInstance {
 // ─── Workflow Node ────────────────────────────────────────────────────────────
 export type WorkflowNodeType = 'start' | 'task' | 'condition' | 'action' | 'notification' | 'end';
 
+export type WorkflowActionType =
+  | 'manual_task' |'automated_task' |'external_integration' |'llm_prompt';
+
 export interface WorkflowNode {
   id: string;
   type: WorkflowNodeType;
@@ -108,6 +111,11 @@ export interface WorkflowNode {
   conditions?: string[];
   position: { x: number; y: number };
   data?: Record<string, unknown>;
+  // New fields for action/record association
+  actionType?: WorkflowActionType;
+  linkedRecordType?: string;
+  llmPrompt?: string;
+  integrationTarget?: string;
 }
 
 export interface WorkflowEdge {

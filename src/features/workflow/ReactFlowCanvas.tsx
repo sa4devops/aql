@@ -1,5 +1,5 @@
 'use client';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -15,6 +15,10 @@ import 'reactflow/dist/style.css';
 import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/mocks/types';
 import { NODE_TYPE_CONFIG } from './WorkflowPage';
 import { ACTIONS } from '@/mocks/data';
+
+// Edge color constants — CSS variables don't work in SVG stroke attributes
+const EDGE_COLOR = '#94a3b8';
+const EDGE_COLOR_SELECTED = '#6366f1';
 
 // ─── Custom Node ──────────────────────────────────────────────────────────────
 const CustomNode = ({
@@ -41,18 +45,18 @@ const CustomNode = ({
       className="wf-node"
       style={{
         borderColor: selected
-          ? 'var(--accent)'
+          ? '#6366f1'
           : data.isActive && data.simulating
-          ? 'var(--success)'
+          ? '#22c55e'
           : cfg.color,
         background: selected
-          ? 'var(--accent-subtle)'
+          ? 'rgba(99,102,241,0.08)'
           : data.isActive && data.simulating
-          ? 'var(--success-bg)'
+          ? 'rgba(34,197,94,0.08)'
           : 'var(--surface)',
         minWidth: 140,
         position: 'relative',
-        boxShadow: selected ? '0 0 0 2px var(--accent-muted)' : undefined,
+        boxShadow: selected ? '0 0 0 2px rgba(99,102,241,0.3)' : undefined,
       }}
     >
       <div className="flex items-center gap-2">
@@ -90,8 +94,8 @@ const CustomNode = ({
             insetInlineEnd: -4,
             width: 10,
             height: 10,
-            background: 'var(--success)',
-            boxShadow: '0 0 0 3px var(--success-bg)',
+            background: '#22c55e',
+            boxShadow: '0 0 0 3px rgba(34,197,94,0.2)',
           }}
           aria-label="Active node"
         />
@@ -157,10 +161,20 @@ export default function ReactFlowCanvas({
       target: e.target,
       label: e.label ? (lang === 'ar' ? e.label.ar : e.label.en) : undefined,
       type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--border-strong)' },
-      style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
-      labelStyle: { fill: 'var(--text-secondary)', fontSize: 11 },
-      labelBgStyle: { fill: 'var(--surface)' },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: EDGE_COLOR,
+        width: 18,
+        height: 18,
+      },
+      style: {
+        stroke: EDGE_COLOR,
+        strokeWidth: 2,
+      },
+      labelStyle: { fill: '#64748b', fontSize: 11 },
+      labelBgStyle: { fill: '#f8fafc', fillOpacity: 0.9 },
+      labelBgPadding: [4, 6] as [number, number],
+      labelBgBorderRadius: 4,
     })),
     [lang]
   );
@@ -175,16 +189,24 @@ export default function ReactFlowCanvas({
 
   const onConnect = useCallback((params: Connection) => {
     if (isReadOnly) return;
-    const newEdge = {
-      ...params,
+    const newEdge: Edge = {
+      id: `edge-${Date.now()}`,
+      source: params.source || '',
+      target: params.target || '',
+      sourceHandle: params.sourceHandle,
+      targetHandle: params.targetHandle,
       type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: EDGE_COLOR,
+        width: 18,
+        height: 18,
+      },
+      style: { stroke: EDGE_COLOR, strokeWidth: 2 },
     };
     setEdges(eds => addEdge(newEdge, eds));
-    // Sync new edge to workflow
-    const edgeId = `edge-${Date.now()}`;
     const wfEdge: WorkflowEdge = {
-      id: edgeId,
+      id: newEdge.id,
       source: params.source || '',
       target: params.target || '',
     };
@@ -204,12 +226,31 @@ export default function ReactFlowCanvas({
     const wfEdge = workflow.edges.find(e => e.id === edge.id);
     onEdgeSelect(wfEdge || null);
     onNodeSelect(null);
-  }, [workflow.edges, onEdgeSelect, onNodeSelect]);
+    setEdges(eds => eds.map(e => ({
+      ...e,
+      style: {
+        ...e.style,
+        stroke: e.id === edge.id ? EDGE_COLOR_SELECTED : EDGE_COLOR,
+        strokeWidth: e.id === edge.id ? 2.5 : 2,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: e.id === edge.id ? EDGE_COLOR_SELECTED : EDGE_COLOR,
+        width: 18,
+        height: 18,
+      },
+    })));
+  }, [workflow.edges, onEdgeSelect, onNodeSelect, setEdges]);
 
   const onPaneClick = useCallback(() => {
     onNodeSelect(null);
     onEdgeSelect(null);
-  }, [onNodeSelect, onEdgeSelect]);
+    setEdges(eds => eds.map(e => ({
+      ...e,
+      style: { ...e.style, stroke: EDGE_COLOR, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
+    })));
+  }, [onNodeSelect, onEdgeSelect, setEdges]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
     if (!dragNodeType || isReadOnly) return;
@@ -231,7 +272,6 @@ export default function ReactFlowCanvas({
       draggable: true,
     };
     setNodes(nds => [...nds, newNode]);
-    // Sync to workflow
     const wfNode: WorkflowNode = {
       id: newNodeId,
       type: dragNodeType,
@@ -259,18 +299,23 @@ export default function ReactFlowCanvas({
         fitView
         attributionPosition="bottom-right"
         style={{ background: 'var(--background)' }}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
+          style: { stroke: EDGE_COLOR, strokeWidth: 2 },
+        }}
       >
         <Background
           variant={BackgroundVariant.Dots}
           gap={20}
           size={1}
-          color="var(--border)"
+          color="#e2e8f0"
         />
         <Controls />
         <MiniMap
           nodeColor={(node) => {
             const type = node.data?.type as WorkflowNodeType;
-            return NODE_TYPE_CONFIG[type]?.color || 'var(--gray-400)';
+            return NODE_TYPE_CONFIG[type]?.color || '#94a3b8';
           }}
           style={{ background: 'var(--surface)' }}
         />
