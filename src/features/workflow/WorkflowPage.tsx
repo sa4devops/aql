@@ -1,9 +1,9 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import AppShell, { useApp } from '@/components/AppShell';
-import { WORKFLOWS, RECORD_TYPES } from '@/mocks/data';
-import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, WorkflowActionType } from '@/mocks/types';
+import { WORKFLOWS } from '@/mocks/data';
+import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, WorkflowActionType, LinkedRecord, LinkedRecordLookupState } from '@/mocks/types';
 import { ROUTES } from '@/app-routes/routes';
 import { useRouter } from 'next/navigation';
 
@@ -46,6 +46,276 @@ const ACTION_TYPE_CONFIG: Record<WorkflowActionType, { ar: string; en: string; i
     icon: '🤖',
     description: { ar: 'إرسال برومت إلى نموذج لغوي لتنفيذ مهمة', en: 'Send a prompt to an LLM to perform a task' },
   },
+};
+
+// ─── Mock Record Instances ────────────────────────────────────────────────────
+/**
+ * AGENT NOTE — Mock Lookup Data (2026-07-15)
+ *
+ * AR: هذه البيانات للتجربة فقط. التنفيذ الحقيقي سيستخدم Backend Lookup API
+ *     ولن يحمل السجلات في المتصفح. يجب حذف هذا الكائن عند الانتقال للإنتاج.
+ *
+ * EN: This mock data is for the trial phase ONLY. Production will use a
+ *     Backend Lookup API — records must NOT be loaded into the browser.
+ *     Delete this object when moving to production.
+ */
+const MOCK_RECORD_INSTANCES: LinkedRecord[] = [
+  { recordReferenceNumber: 'REF-2024-00451', resolvedRecordId: 'rec_7f3a9b2c', recordDisplayName: 'طلب إجازة — أحمد الزهراني', recordTypeId: 'rt-leave-request' },
+  { recordReferenceNumber: 'REF-2024-00452', resolvedRecordId: 'rec_8a1b3c4d', recordDisplayName: 'مراسلة واردة — وزارة المالية', recordTypeId: 'rt-incoming-mail' },
+  { recordReferenceNumber: 'REF-2024-00453', resolvedRecordId: 'rec_9c2d4e5f', recordDisplayName: 'طلب شراء — معدات مكتبية', recordTypeId: 'rt-purchase-request' },
+  { recordReferenceNumber: 'REF-2024-00454', resolvedRecordId: 'rec_0d3e5f6a', recordDisplayName: 'شكوى موظف — قسم الموارد البشرية', recordTypeId: 'rt-hr-complaint' },
+  // Intentional duplicate to test ambiguous state
+  { recordReferenceNumber: 'REF-2024-00455', resolvedRecordId: 'rec_1e4f6a7b', recordDisplayName: 'عقد خدمات — شركة الاتصالات أ', recordTypeId: 'rt-contract' },
+  { recordReferenceNumber: 'REF-2024-00455', resolvedRecordId: 'rec_2f5a7b8c', recordDisplayName: 'عقد خدمات — شركة الاتصالات ب', recordTypeId: 'rt-contract' },
+];
+
+// ─── Mock Async Lookup Function ───────────────────────────────────────────────
+/**
+ * Simulates a Backend Lookup API call with realistic async behavior.
+ * Returns one of: found | not_found | ambiguous | service_unavailable
+ *
+ * PRODUCTION NOTE: Replace this function with a real API call:
+ *   GET /api/records/lookup?ref={referenceNumber}
+ * The API should return { record: LinkedRecord } or appropriate error codes.
+ * Never load all records into the browser for large datasets.
+ */
+async function mockLookupRecord(ref: string): Promise<{ state: 'found' | 'not_found' | 'ambiguous' | 'service_unavailable'; records: LinkedRecord[] }> {
+  // Simulate network latency (200–600ms)
+  await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
+
+  // Simulate service unavailable for refs starting with 'ERR'
+  if (ref.toUpperCase().startsWith('ERR')) {
+    return { state: 'service_unavailable', records: [] };
+  }
+
+  const matches = MOCK_RECORD_INSTANCES.filter(r =>
+    r.recordReferenceNumber.toLowerCase() === ref.toLowerCase()
+  );
+
+  if (matches.length === 0) return { state: 'not_found', records: [] };
+  if (matches.length === 1) return { state: 'found', records: matches };
+  return { state: 'ambiguous', records: matches };
+}
+
+// ─── Linked Record Lookup Component ──────────────────────────────────────────
+const LinkedRecordLookup = ({
+  value,
+  onChange,
+  t,
+  lang,
+}: {
+  value: LinkedRecord | undefined;
+  onChange: (record: LinkedRecord | undefined) => void;
+  t: (ar: string, en: string) => string;
+  lang: 'ar' | 'en';
+}) => {
+  const [inputValue, setInputValue] = useState(value?.recordReferenceNumber || '');
+  const [lookupState, setLookupState] = useState<LinkedRecordLookupState>('idle');
+  const [ambiguousResults, setAmbiguousResults] = useState<LinkedRecord[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync input if parent resets value
+  useEffect(() => {
+    if (!value) {
+      setInputValue('');
+      setLookupState('idle');
+    }
+  }, [value]);
+
+  const handleInputChange = useCallback((raw: string) => {
+    setInputValue(raw);
+    onChange(undefined);
+    setAmbiguousResults([]);
+
+    if (!raw.trim()) {
+      setLookupState('idle');
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      return;
+    }
+
+    setLookupState('searching');
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // 300ms debounce before firing the lookup
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const result = await mockLookupRecord(raw.trim());
+        setLookupState(result.state);
+        if (result.state === 'found') {
+          onChange(result.records[0]);
+        } else if (result.state === 'ambiguous') {
+          setAmbiguousResults(result.records);
+        }
+      } catch {
+        setLookupState('service_unavailable');
+      }
+    }, 300);
+  }, [onChange]);
+
+  const handleAmbiguousSelect = useCallback((record: LinkedRecord) => {
+    onChange(record);
+    setLookupState('found');
+    setAmbiguousResults([]);
+  }, [onChange]);
+
+  const handleClear = useCallback(() => {
+    setInputValue('');
+    onChange(undefined);
+    setLookupState('idle');
+    setAmbiguousResults([]);
+  }, [onChange]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+        {t('السجل المرتبط (الرقم المرجعي)', 'Linked Record (Reference Number)')}
+      </label>
+
+      {/*
+       * AGENT NOTE (2026-07-15):
+       * المستخدم يدخل الرقم المرجعي للسجل الفعلي (مثل REF-2024-00451).
+       * النظام يبحث عنه عبر Mock Async Lookup (300ms debounce) ويحفظ:
+       *   - recordReferenceNumber: ما أدخله المستخدم
+       *   - resolvedRecordId: المعرّف الداخلي الثابت
+       *   - recordDisplayName: الاسم الظاهر للسجل
+       *   - recordTypeId: نوع السجل الذي ينتمي إليه
+       * التنفيذ الحقيقي سيستخدم Backend Lookup API ولن يحمل السجلات في المتصفح.
+       *
+       * EN: User enters the actual record reference number (e.g. REF-2024-00451).
+       * The system looks it up via Mock Async Lookup (300ms debounce) and stores:
+       *   - recordReferenceNumber: what the user typed
+       *   - resolvedRecordId: stable internal DB identifier
+       *   - recordDisplayName: human-readable record label
+       *   - recordTypeId: the Record Type this instance belongs to
+       * Production will use a Backend Lookup API — NOT a local array search.
+       */}
+
+      <div className="relative">
+        <input
+          type="text"
+          className="input-base"
+          value={inputValue}
+          onChange={e => handleInputChange(e.target.value)}
+          placeholder={t('أدخل الرقم المرجعي (مثال: REF-2024-00451)', 'Enter reference number (e.g. REF-2024-00451)')}
+          dir="ltr"
+          style={{ paddingInlineEnd: inputValue ? 32 : undefined }}
+        />
+        {inputValue && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute inset-y-0 flex items-center px-2"
+            style={{ insetInlineEnd: 4, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+            aria-label={t('مسح', 'Clear')}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        )}
+      </div>
+
+      {/* ── State Indicators ── */}
+      {lookupState === 'idle' && (
+        <div className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+          {t('أدخل الرقم المرجعي للبحث التلقائي', 'Enter a reference number to auto-search')}
+        </div>
+      )}
+
+      {lookupState === 'searching' && (
+        <div className="flex items-center gap-1.5 mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+          <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          {t('جارٍ البحث...', 'Searching...')}
+        </div>
+      )}
+
+      {lookupState === 'found' && value && (
+        <div
+          className="mt-1.5 rounded-md px-3 py-2 text-xs"
+          style={{ background: 'color-mix(in srgb, var(--success, #16a34a) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)' }}
+        >
+          <div className="flex items-center gap-1.5 font-medium" style={{ color: 'var(--success, #16a34a)' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            {t('تم العثور على السجل', 'Record found')}
+          </div>
+          <div className="mt-1 space-y-0.5" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+            <div>{value.recordDisplayName}</div>
+            <div style={{ color: 'var(--text-muted)' }}>
+              ID: {value.resolvedRecordId} · Type: {value.recordTypeId}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lookupState === 'not_found' && (
+        <div
+          className="mt-1.5 rounded-md px-3 py-2 text-xs flex items-center gap-1.5"
+          style={{ background: 'color-mix(in srgb, var(--error, #dc2626) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--error, #dc2626) 25%, transparent)', color: 'var(--error, #dc2626)' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {t('لم يُعثر على سجل بهذا الرقم', 'No record found with this reference number')}
+        </div>
+      )}
+
+      {lookupState === 'ambiguous' && ambiguousResults.length > 0 && (
+        <div
+          className="mt-1.5 rounded-md text-xs overflow-hidden"
+          style={{ border: '1px solid color-mix(in srgb, var(--warning, #d97706) 40%, transparent)' }}
+        >
+          <div
+            className="flex items-center gap-1.5 px-3 py-2 font-medium"
+            style={{ background: 'color-mix(in srgb, var(--warning, #d97706) 10%, transparent)', color: 'var(--warning, #d97706)' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            {t(`تعدد نتائج (${ambiguousResults.length}) — اختر السجل الصحيح`, `Ambiguous (${ambiguousResults.length} results) — select the correct record`)}
+          </div>
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+            {ambiguousResults.map(rec => (
+              <button
+                key={rec.resolvedRecordId}
+                type="button"
+                onClick={() => handleAmbiguousSelect(rec)}
+                className="w-full text-start px-3 py-2 hover:bg-opacity-50 transition-colors"
+                style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}
+              >
+                <div className="font-medium">{rec.recordDisplayName}</div>
+                <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                  {rec.resolvedRecordId} · {rec.recordTypeId}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lookupState === 'service_unavailable' && (
+        <div
+          className="mt-1.5 rounded-md px-3 py-2 text-xs"
+          style={{ background: 'color-mix(in srgb, var(--error, #dc2626) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--error, #dc2626) 25%, transparent)', color: 'var(--error, #dc2626)' }}
+        >
+          <div className="flex items-center gap-1.5 font-medium">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            {t('خدمة البحث غير متاحة مؤقتاً', 'Lookup service temporarily unavailable')}
+          </div>
+          <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+            {t('حاول مرة أخرى أو تواصل مع الدعم الفني', 'Try again or contact support')}
+          </div>
+        </div>
+      )}
+
+      {/* Hint: production note */}
+      <div className="text-xs mt-1.5" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+        {t(
+          'ملاحظة: التنفيذ الحقيقي سيستخدم Backend Lookup API ولن يحمل السجلات في المتصفح',
+          'Note: Production will use a Backend Lookup API — records will not be loaded in the browser'
+        )}
+      </div>
+    </div>
+  );
 };
 
 // ─── Workflow Node Inspector ──────────────────────────────────────────────────
@@ -218,63 +488,13 @@ const NodeInspector = ({
           </div>
         )}
 
-        {/* ── Linked Record Type ── */}
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
-            {t('نوع السجل المرتبط', 'Linked Record Type')}
-          </label>
-          {/*
-           * AGENT NOTE (2026-07-15):
-           * السجل المرتبط يُعرَّف بالرقم المرجعي (rt.id) وليس بالاسم فقط.
-           * القيمة المحفوظة في node.linkedRecordType هي rt.id (الرقم المرجعي).
-           * يجب دائماً عرض الرقم المرجعي بجانب الاسم في واجهة الاختيار
-           * حتى يتمكن المستخدم من التعرف على السجل بدقة.
-           *
-           * AGENT NOTE (EN):
-           * The linked record is identified by its reference number (rt.id), not just its name.
-           * The value stored in node.linkedRecordType is rt.id (the reference number).
-           * Always display the reference ID alongside the name in the select UI
-           * so the user can accurately identify the record type.
-           */}
-          <input
-            type="text"
-            className="input-base"
-            value={node.linkedRecordType || ''}
-            onChange={e => onUpdate({ ...node, linkedRecordType: e.target.value || undefined })}
-            placeholder={t('أدخل رقم السجل (مثال: rt-001)', 'Enter record ID (e.g. rt-001)')}
-            dir="ltr"
-          />
-          {(() => {
-            const matched = node.linkedRecordType
-              ? RECORD_TYPES.find(rt => rt.id === node.linkedRecordType)
-              : null;
-            if (node.linkedRecordType && matched) {
-              return (
-                <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: 'var(--color-success, #16a34a)' }}>
-                  <span>✓</span>
-                  <span>{lang === 'ar' ? matched.name.ar : matched.name.en}</span>
-                </div>
-              );
-            }
-            if (node.linkedRecordType && !matched) {
-              return (
-                <div className="text-xs mt-1" style={{ color: 'var(--color-danger, #dc2626)' }}>
-                  {t('رقم السجل غير موجود', 'Record ID not found')}
-                </div>
-              );
-            }
-            return (
-              <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                {t('أدخل رقم السجل للربط التلقائي', 'Enter a record ID to auto-link')}
-              </div>
-            );
-          })()}
-          {node.linkedRecordType && (
-            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {t('سيعمل هذا الإجراء على سجلات من هذا النوع', 'This action will operate on records of this type')}
-            </div>
-          )}
-        </div>
+        {/* ── Linked Record ── */}
+        <LinkedRecordLookup
+          value={node.linkedRecord}
+          onChange={(record) => onUpdate({ ...node, linkedRecord: record })}
+          t={t}
+          lang={lang}
+        />
 
         {/* Assigned Role (for task nodes) */}
         {(node.type === 'task' || node.type === 'action') && (

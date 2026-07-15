@@ -1,5 +1,5 @@
 'use client';
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -16,9 +16,28 @@ import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/m
 import { NODE_TYPE_CONFIG } from './WorkflowPage';
 import { ACTIONS } from '@/mocks/data';
 
-// Edge color constants — CSS variables don't work in SVG stroke attributes
-const EDGE_COLOR = '#94a3b8';
+/**
+ * AGENT NOTE — Edge Color Strategy (2026-07-15)
+ *
+ * AR: لا نستخدم لوناً Hex ثابتاً للوصلات لأن SVG stroke لا يدعم CSS variables مباشرةً.
+ *     بدلاً من ذلك نقرأ قيمة الـ Token من getComputedStyle في وقت التشغيل (useEffect)
+ *     بحيث يتغير لون الوصلات تلقائياً عند تبديل Light/Dark Theme.
+ *     الـ fallback هو #94a3b8 فقط في حالة عدم وجود DOM (SSR).
+ *
+ * EN: We cannot use CSS variables directly in SVG stroke attributes.
+ *     Instead, we read the computed token value from getComputedStyle at runtime
+ *     (inside useEffect) so edge colors automatically update with Light/Dark theme.
+ *     The fallback #94a3b8 is only used when DOM is unavailable (SSR).
+ */
+const EDGE_COLOR_FALLBACK = '#94a3b8';
 const EDGE_COLOR_SELECTED = '#6366f1';
+
+/** Read the resolved value of a CSS custom property from the document root. */
+function getThemeToken(token: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return value || fallback;
+}
 
 // ─── Custom Node ──────────────────────────────────────────────────────────────
 const CustomNode = ({
@@ -134,6 +153,25 @@ export default function ReactFlowCanvas({
   t,
   lang,
 }: Props) {
+  /**
+   * Resolved edge color — read from CSS custom property at runtime so it
+   * respects the active Light/Dark theme. Falls back to #94a3b8 on SSR.
+   *
+   * We listen for theme changes via a MutationObserver on <html> class/data
+   * attributes so the color updates immediately when the user switches themes.
+   */
+  const [edgeColor, setEdgeColor] = useState<string>(EDGE_COLOR_FALLBACK);
+
+  useEffect(() => {
+    const resolve = () => setEdgeColor(getThemeToken('--border-strong', EDGE_COLOR_FALLBACK));
+    resolve();
+
+    // Re-resolve when the theme class/attribute on <html> changes
+    const observer = new MutationObserver(resolve);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   const toRFNodes = useCallback((wf: Workflow): Node[] =>
     wf.nodes.map((n, idx) => ({
       id: n.id,
@@ -163,12 +201,12 @@ export default function ReactFlowCanvas({
       type: 'smoothstep',
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: EDGE_COLOR,
+        color: edgeColor,
         width: 18,
         height: 18,
       },
       style: {
-        stroke: EDGE_COLOR,
+        stroke: edgeColor,
         strokeWidth: 2,
       },
       labelStyle: { fill: '#64748b', fontSize: 11 },
@@ -176,7 +214,7 @@ export default function ReactFlowCanvas({
       labelBgPadding: [4, 6] as [number, number],
       labelBgBorderRadius: 4,
     })),
-    [lang]
+    [lang, edgeColor]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(toRFNodes(workflow));
@@ -198,11 +236,11 @@ export default function ReactFlowCanvas({
       type: 'smoothstep',
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: EDGE_COLOR,
+        color: edgeColor,
         width: 18,
         height: 18,
       },
-      style: { stroke: EDGE_COLOR, strokeWidth: 2 },
+      style: { stroke: edgeColor, strokeWidth: 2 },
     };
     setEdges(eds => addEdge(newEdge, eds));
     const wfEdge: WorkflowEdge = {
@@ -214,7 +252,7 @@ export default function ReactFlowCanvas({
       ...workflow,
       edges: [...workflow.edges, wfEdge],
     });
-  }, [isReadOnly, setEdges, workflow, onWorkflowChange]);
+  }, [isReadOnly, setEdges, workflow, onWorkflowChange, edgeColor]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     const wfNode = workflow.nodes.find(n => n.id === node.id);
@@ -230,27 +268,27 @@ export default function ReactFlowCanvas({
       ...e,
       style: {
         ...e.style,
-        stroke: e.id === edge.id ? EDGE_COLOR_SELECTED : EDGE_COLOR,
+        stroke: e.id === edge.id ? EDGE_COLOR_SELECTED : edgeColor,
         strokeWidth: e.id === edge.id ? 2.5 : 2,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: e.id === edge.id ? EDGE_COLOR_SELECTED : EDGE_COLOR,
+        color: e.id === edge.id ? EDGE_COLOR_SELECTED : edgeColor,
         width: 18,
         height: 18,
       },
     })));
-  }, [workflow.edges, onEdgeSelect, onNodeSelect, setEdges]);
+  }, [workflow.edges, onEdgeSelect, onNodeSelect, setEdges, edgeColor]);
 
   const onPaneClick = useCallback(() => {
     onNodeSelect(null);
     onEdgeSelect(null);
     setEdges(eds => eds.map(e => ({
       ...e,
-      style: { ...e.style, stroke: EDGE_COLOR, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
+      style: { ...e.style, stroke: edgeColor, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 18, height: 18 },
     })));
-  }, [onNodeSelect, onEdgeSelect, setEdges]);
+  }, [onNodeSelect, onEdgeSelect, setEdges, edgeColor]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
     if (!dragNodeType || isReadOnly) return;
@@ -301,8 +339,8 @@ export default function ReactFlowCanvas({
         style={{ background: 'var(--background)' }}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
-          style: { stroke: EDGE_COLOR, strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 18, height: 18 },
+          style: { stroke: edgeColor, strokeWidth: 2 },
         }}
       >
         <Background
@@ -315,7 +353,7 @@ export default function ReactFlowCanvas({
         <MiniMap
           nodeColor={(node) => {
             const type = node.data?.type as WorkflowNodeType;
-            return NODE_TYPE_CONFIG[type]?.color || '#94a3b8';
+            return NODE_TYPE_CONFIG[type]?.color || edgeColor;
           }}
           style={{ background: 'var(--surface)' }}
         />
