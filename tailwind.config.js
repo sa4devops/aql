@@ -1,0 +1,98 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}', './app/**/*.{js,ts,jsx,tsx,mdx}'],
+  darkMode: 'class',
+  theme: {
+    container: { center: true, padding: '1rem' },
+    extend: {
+      colors: {
+        accent: {
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          pressed: 'var(--accent-pressed)',
+          subtle: 'var(--accent-subtle)',
+          foreground: 'var(--accent-foreground)',
+          muted: 'var(--accent-muted)',
+        },
+        surface: {
+          DEFAULT: 'var(--surface)',
+          raised: 'var(--surface-raised)',
+          overlay: 'var(--surface-overlay)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          subtle: 'var(--border-subtle)',
+          strong: 'var(--border-strong)',
+        },
+        text: {
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+          disabled: 'var(--text-disabled)',
+          inverse: 'var(--text-inverse)',
+        },
+        background: { DEFAULT: 'var(--background)' },
+        foreground: { DEFAULT: 'var(--foreground)' },
+        success: {
+          DEFAULT: 'var(--success)',
+          bg: 'var(--success-bg)',
+          border: 'var(--success-border)',
+          text: 'var(--success-text)',
+        },
+        warning: {
+          DEFAULT: 'var(--warning)',
+          bg: 'var(--warning-bg)',
+          border: 'var(--warning-border)',
+          text: 'var(--warning-text)',
+        },
+        error: {
+          DEFAULT: 'var(--error)',
+          bg: 'var(--error-bg)',
+          border: 'var(--error-border)',
+          text: 'var(--error-text)',
+        },
+        info: {
+          DEFAULT: 'var(--info)',
+          bg: 'var(--info-bg)',
+          border: 'var(--info-border)',
+          text: 'var(--info-text)',
+        },
+        'risk-low': { DEFAULT: 'var(--risk-low)', bg: 'var(--risk-low-bg)', text: 'var(--risk-low-text)' },
+        'risk-medium': { DEFAULT: 'var(--risk-medium)', bg: 'var(--risk-medium-bg)', text: 'var(--risk-medium-text)' },
+        'risk-high': { DEFAULT: 'var(--risk-high)', bg: 'var(--risk-high-bg)', text: 'var(--risk-high-text)' },
+        'risk-critical': { DEFAULT: 'var(--risk-critical)', bg: 'var(--risk-critical-bg)', text: 'var(--risk-critical-text)' },
+        gray: {
+          50: 'var(--gray-50)',
+          100: 'var(--gray-100)',
+          200: 'var(--gray-200)',
+          300: 'var(--gray-300)',
+          400: 'var(--gray-400)',
+          500: 'var(--gray-500)',
+          600: 'var(--gray-600)',
+          700: 'var(--gray-700)',
+          800: 'var(--gray-800)',
+          900: 'var(--gray-900)',
+          950: 'var(--gray-950)',
+        },
+      },
+      borderRadius: {
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        full: 'var(--radius-full)',
+      },
+      fontFamily: {
+        sans: ['var(--font-arabic)', 'var(--font-latin)', 'sans-serif'],
+        arabic: ['var(--font-arabic)', 'sans-serif'],
+        latin: ['var(--font-latin)', 'sans-serif'],
+        mono: ['var(--font-mono)', 'monospace'],
+      },
+      boxShadow: {
+        'elevation-1': 'var(--shadow-1)',
+        'elevation-2': 'var(--shadow-2)',
+      },
+    },
+  },
+  plugins: [require('@tailwindcss/typography')],
+};
