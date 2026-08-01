@@ -53,7 +53,7 @@ const ACCENT_TOKENS = {
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
-const getNavItems = (t: (ar: string, en: string) => string) => [
+const getNavItems = (t: (ar: string, en: string) => string): { group: string; items: { label: string; icon: string; href: string; exact?: boolean }[] }[] => [
   {
     group: t('الرئيسية', 'Main'),
     items: [
@@ -83,6 +83,7 @@ const getNavItems = (t: (ar: string, en: string) => string) => [
     group: t('النظام', 'System'),
     items: [
       { label: t('معرض التصميم', 'UI Showcase'), icon: 'palette', href: ROUTES.showcase },
+      { label: t('مرجع التصميم', 'UI Reference'), icon: 'reference', href: '/ui-reference' },
     ],
   },
 ];
@@ -95,6 +96,7 @@ const NavIcon = ({ name }: { name: string }) => {
     workflow: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v3m-4.5 5.5L12 10l4.5 5.5"/></svg>,
     shield: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     palette: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>,
+    reference: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
   };
   return <span className="flex-shrink-0 text-current">{icons[name] || icons.home}</span>;
 };
@@ -199,7 +201,7 @@ const Sidebar = ({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         />
         {!collapsed && (
           <div>
-            <div className="text-sm font-bold" style={{ color: 'var(--accent)', lineHeight: 1.2 }}>عقل</div>
+            <div className="text-sm font-bold" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>عقل</div>
             <div className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-latin)', lineHeight: 1.2 }}>AQL Platform</div>
           </div>
         )}

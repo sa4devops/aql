@@ -6,6 +6,7 @@ export const ROUTES = {
   governanceActions: '/action-registry',
   governanceActionDetail: (id: string) => `/action-registry/${id}`,
   showcase: '/ui-showcase-design-playground',
+  uiReference: '/ui-reference',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

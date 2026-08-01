@@ -98,6 +98,50 @@ export interface RecordInstance {
 // ─── Workflow Node ────────────────────────────────────────────────────────────
 export type WorkflowNodeType = 'start' | 'task' | 'condition' | 'action' | 'notification' | 'end';
 
+export type WorkflowActionType =
+  | 'manual_task' |'automated_task' |'external_integration' |'llm_prompt';
+
+/**
+ * AGENT NOTE — Linked Record Model (2026-07-15)
+ *
+ * AR: السجل المرتبط يُعرَّف بالرقم المرجعي الظاهر (recordReferenceNumber)،
+ *     لكن النظام يحفظ المعرّف الداخلي الثابت (resolvedRecordId) بعد التحقق.
+ *     هذا يضمن عدم انكسار الربط إذا تغير تنسيق الرقم الظاهر.
+ *     التنفيذ الحقيقي سيستخدم Backend Lookup API ولن يحمل السجلات في المتصفح.
+ *
+ * EN: The linked record is identified by the user-visible reference number
+ *     (recordReferenceNumber), but the system stores the stable internal ID
+ *     (resolvedRecordId) after verification. This prevents broken links if the
+ *     display number format changes. Production will use a Backend Lookup API —
+ *     records must NOT be loaded into the browser for large datasets.
+ *
+ * Fields:
+ *   recordReferenceNumber — what the user types (e.g. "REF-2024-00451")
+ *   resolvedRecordId      — stable internal DB id (e.g. "rec_7f3a9b2c")
+ *   recordDisplayName     — human-readable label shown after lookup
+ *   recordTypeId          — the Record Type this instance belongs to (e.g. "rt-leave-request")
+ */
+export interface LinkedRecord {
+  recordReferenceNumber: string;
+  resolvedRecordId: string;
+  recordDisplayName: string;
+  recordTypeId: string;
+}
+
+/**
+ * Mock Async Lookup states for the trial phase.
+ * Production will replace this with a real Backend Lookup API call.
+ *
+ *   idle               — field is empty, no lookup triggered
+ *   searching          — debounce fired (300ms), awaiting mock response
+ *   found              — exactly one matching record returned
+ *   not_found          — no records matched the reference number
+ *   ambiguous          — more than one record matched (duplicate reference)
+ *   service_unavailable — simulated API failure / network error
+ */
+export type LinkedRecordLookupState =
+  | 'idle' |'searching' |'found' |'not_found' |'ambiguous' |'service_unavailable';
+
 export interface WorkflowNode {
   id: string;
   type: WorkflowNodeType;
@@ -108,6 +152,17 @@ export interface WorkflowNode {
   conditions?: string[];
   position: { x: number; y: number };
   data?: Record<string, unknown>;
+  // Action / record association
+  actionType?: WorkflowActionType;
+  /**
+   * @deprecated Use linkedRecord instead.
+   * Kept for backward-compatibility with existing mock data.
+   */
+  linkedRecordType?: string;
+  /** Approved linked-record shape (trial phase). See LinkedRecord interface. */
+  linkedRecord?: LinkedRecord;
+  llmPrompt?: string;
+  integrationTarget?: string;
 }
 
 export interface WorkflowEdge {

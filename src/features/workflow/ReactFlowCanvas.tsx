@@ -7,20 +7,42 @@ import ReactFlow, {
   addEdge,
   useNodesState,
   useEdgesState,
-  type Node,
-  type Edge,
-  type Connection,
   BackgroundVariant,
   MarkerType,
 } from 'reactflow';
+import type { Node, Edge, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
-import type { Workflow, WorkflowNodeType } from '@/mocks/types';
+import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@/mocks/types';
 import { NODE_TYPE_CONFIG } from './WorkflowPage';
 import { ACTIONS } from '@/mocks/data';
+
+/**
+ * AGENT NOTE — Edge Color Strategy (2026-07-15)
+ *
+ * AR: لا نستخدم لوناً Hex ثابتاً للوصلات لأن SVG stroke لا يدعم CSS variables مباشرةً.
+ *     بدلاً من ذلك نقرأ قيمة الـ Token من getComputedStyle في وقت التشغيل (useEffect)
+ *     بحيث يتغير لون الوصلات تلقائياً عند تبديل Light/Dark Theme.
+ *     الـ fallback هو #94a3b8 فقط في حالة عدم وجود DOM (SSR).
+ *
+ * EN: We cannot use CSS variables directly in SVG stroke attributes.
+ *     Instead, we read the computed token value from getComputedStyle at runtime
+ *     (inside useEffect) so edge colors automatically update with Light/Dark theme.
+ *     The fallback #94a3b8 is only used when DOM is unavailable (SSR).
+ */
+const EDGE_COLOR_FALLBACK = '#94a3b8';
+const EDGE_COLOR_SELECTED = '#6366f1';
+
+/** Read the resolved value of a CSS custom property from the document root. */
+function getThemeToken(token: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return value || fallback;
+}
 
 // ─── Custom Node ──────────────────────────────────────────────────────────────
 const CustomNode = ({
   data,
+  selected,
 }: {
   data: {
     label: string;
@@ -32,6 +54,7 @@ const CustomNode = ({
     t: (ar: string, en: string) => string;
     lang: 'ar' | 'en';
   };
+  selected?: boolean;
 }) => {
   const cfg = NODE_TYPE_CONFIG[data.type];
   const action = data.actionId ? ACTIONS.find(a => a.id === data.actionId) : null;
@@ -40,14 +63,19 @@ const CustomNode = ({
     <div
       className="wf-node"
       style={{
-        borderColor: data.isActive && data.simulating
-          ? 'var(--success)'
+        borderColor: selected
+          ? '#6366f1'
+          : data.isActive && data.simulating
+          ? '#22c55e'
           : cfg.color,
-        background: data.isActive && data.simulating
-          ? 'var(--success-bg)'
+        background: selected
+          ? 'rgba(99,102,241,0.08)'
+          : data.isActive && data.simulating
+          ? 'rgba(34,197,94,0.08)'
           : 'var(--surface)',
         minWidth: 140,
         position: 'relative',
+        boxShadow: selected ? '0 0 0 2px rgba(99,102,241,0.3)' : undefined,
       }}
     >
       <div className="flex items-center gap-2">
@@ -62,7 +90,7 @@ const CustomNode = ({
             {data.label}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {data.type === 'ar' ? cfg.ar : cfg.en}
+            {data.lang === 'ar' ? cfg.ar : cfg.en}
           </div>
         </div>
       </div>
@@ -85,8 +113,8 @@ const CustomNode = ({
             insetInlineEnd: -4,
             width: 10,
             height: 10,
-            background: 'var(--success)',
-            boxShadow: '0 0 0 3px var(--success-bg)',
+            background: '#22c55e',
+            boxShadow: '0 0 0 3px rgba(34,197,94,0.2)',
           }}
           aria-label="Active node"
         />
@@ -106,6 +134,8 @@ interface Props {
   dragNodeType: WorkflowNodeType | null;
   onWorkflowChange: (wf: Workflow) => void;
   onActionClick: (actionId: string) => void;
+  onNodeSelect: (node: WorkflowNode | null) => void;
+  onEdgeSelect: (edge: WorkflowEdge | null) => void;
   t: (ar: string, en: string) => string;
   lang: 'ar' | 'en';
 }
@@ -118,9 +148,30 @@ export default function ReactFlowCanvas({
   dragNodeType,
   onWorkflowChange,
   onActionClick,
+  onNodeSelect,
+  onEdgeSelect,
   t,
   lang,
 }: Props) {
+  /**
+   * Resolved edge color — read from CSS custom property at runtime so it
+   * respects the active Light/Dark theme. Falls back to #94a3b8 on SSR.
+   *
+   * We listen for theme changes via a MutationObserver on <html> class/data
+   * attributes so the color updates immediately when the user switches themes.
+   */
+  const [edgeColor, setEdgeColor] = useState<string>(EDGE_COLOR_FALLBACK);
+
+  useEffect(() => {
+    const resolve = () => setEdgeColor(getThemeToken('--border-strong', EDGE_COLOR_FALLBACK));
+    resolve();
+
+    // Re-resolve when the theme class/attribute on <html> changes
+    const observer = new MutationObserver(resolve);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   const toRFNodes = useCallback((wf: Workflow): Node[] =>
     wf.nodes.map((n, idx) => ({
       id: n.id,
@@ -148,12 +199,22 @@ export default function ReactFlowCanvas({
       target: e.target,
       label: e.label ? (lang === 'ar' ? e.label.ar : e.label.en) : undefined,
       type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--border-strong)' },
-      style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
-      labelStyle: { fill: 'var(--text-secondary)', fontSize: 11 },
-      labelBgStyle: { fill: 'var(--surface)' },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: edgeColor,
+        width: 18,
+        height: 18,
+      },
+      style: {
+        stroke: edgeColor,
+        strokeWidth: 2,
+      },
+      labelStyle: { fill: '#64748b', fontSize: 11 },
+      labelBgStyle: { fill: '#f8fafc', fillOpacity: 0.9 },
+      labelBgPadding: [4, 6] as [number, number],
+      labelBgBorderRadius: 4,
     })),
-    [lang]
+    [lang, edgeColor]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(toRFNodes(workflow));
@@ -166,15 +227,76 @@ export default function ReactFlowCanvas({
 
   const onConnect = useCallback((params: Connection) => {
     if (isReadOnly) return;
-    setEdges(eds => addEdge({ ...params, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } }, eds));
-  }, [isReadOnly, setEdges]);
+    const newEdge: Edge = {
+      id: `edge-${Date.now()}`,
+      source: params.source || '',
+      target: params.target || '',
+      sourceHandle: params.sourceHandle,
+      targetHandle: params.targetHandle,
+      type: 'smoothstep',
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: edgeColor,
+        width: 18,
+        height: 18,
+      },
+      style: { stroke: edgeColor, strokeWidth: 2 },
+    };
+    setEdges(eds => addEdge(newEdge, eds));
+    const wfEdge: WorkflowEdge = {
+      id: newEdge.id,
+      source: params.source || '',
+      target: params.target || '',
+    };
+    onWorkflowChange({
+      ...workflow,
+      edges: [...workflow.edges, wfEdge],
+    });
+  }, [isReadOnly, setEdges, workflow, onWorkflowChange, edgeColor]);
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    const wfNode = workflow.nodes.find(n => n.id === node.id);
+    onNodeSelect(wfNode || null);
+    onEdgeSelect(null);
+  }, [workflow.nodes, onNodeSelect, onEdgeSelect]);
+
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    const wfEdge = workflow.edges.find(e => e.id === edge.id);
+    onEdgeSelect(wfEdge || null);
+    onNodeSelect(null);
+    setEdges(eds => eds.map(e => ({
+      ...e,
+      style: {
+        ...e.style,
+        stroke: e.id === edge.id ? EDGE_COLOR_SELECTED : edgeColor,
+        strokeWidth: e.id === edge.id ? 2.5 : 2,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: e.id === edge.id ? EDGE_COLOR_SELECTED : edgeColor,
+        width: 18,
+        height: 18,
+      },
+    })));
+  }, [workflow.edges, onEdgeSelect, onNodeSelect, setEdges, edgeColor]);
+
+  const onPaneClick = useCallback(() => {
+    onNodeSelect(null);
+    onEdgeSelect(null);
+    setEdges(eds => eds.map(e => ({
+      ...e,
+      style: { ...e.style, stroke: edgeColor, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 18, height: 18 },
+    })));
+  }, [onNodeSelect, onEdgeSelect, setEdges, edgeColor]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
     if (!dragNodeType || isReadOnly) return;
     event.preventDefault();
     const cfg = NODE_TYPE_CONFIG[dragNodeType];
+    const newNodeId = `node-drop-${Date.now()}`;
     const newNode: Node = {
-      id: `node-drop-${Date.now()}`,
+      id: newNodeId,
       type: 'custom',
       position: { x: event.clientX - 300, y: event.clientY - 100 },
       data: {
@@ -188,7 +310,17 @@ export default function ReactFlowCanvas({
       draggable: true,
     };
     setNodes(nds => [...nds, newNode]);
-  }, [dragNodeType, isReadOnly, lang, t, setNodes]);
+    const wfNode: WorkflowNode = {
+      id: newNodeId,
+      type: dragNodeType,
+      label: { ar: cfg.ar, en: cfg.en },
+      position: { x: event.clientX - 300, y: event.clientY - 100 },
+    };
+    onWorkflowChange({
+      ...workflow,
+      nodes: [...workflow.nodes, wfNode],
+    });
+  }, [dragNodeType, isReadOnly, lang, t, setNodes, workflow, onWorkflowChange]);
 
   return (
     <div style={{ width: '100%', height: '100%' }} onDrop={onDrop} onDragOver={e => e.preventDefault()}>
@@ -198,22 +330,30 @@ export default function ReactFlowCanvas({
         onNodesChange={isReadOnly ? undefined : onNodesChange}
         onEdgesChange={isReadOnly ? undefined : onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
         attributionPosition="bottom-right"
         style={{ background: 'var(--background)' }}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 18, height: 18 },
+          style: { stroke: edgeColor, strokeWidth: 2 },
+        }}
       >
         <Background
           variant={BackgroundVariant.Dots}
           gap={20}
           size={1}
-          color="var(--border)"
+          color="#e2e8f0"
         />
         <Controls />
         <MiniMap
           nodeColor={(node) => {
             const type = node.data?.type as WorkflowNodeType;
-            return NODE_TYPE_CONFIG[type]?.color || 'var(--gray-400)';
+            return NODE_TYPE_CONFIG[type]?.color || edgeColor;
           }}
           style={{ background: 'var(--surface)' }}
         />
